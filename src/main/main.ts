@@ -245,6 +245,17 @@ function registerIpc(): void {
 
   ipcMain.handle('app:relaunch-admin', () => relaunchAsAdmin());
 
+  ipcMain.handle('app:run-setup', () => {
+    // Launch the per-app setup script in its own console window so the user sees
+    // progress. The app already runs elevated, so the child inherits admin.
+    const ps1 = path.join(APP_ROOT, 'scripts', 'setup-perapp.ps1');
+    spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', ps1],
+      { cwd: APP_ROOT, detached: true, windowsHide: false },
+    ).unref();
+  });
+
   ipcMain.handle('app:open-external', (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   });

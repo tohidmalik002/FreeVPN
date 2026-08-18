@@ -63,8 +63,22 @@ async function refreshEnv(): Promise<void> {
     } else {
       engineStatus.className = 'engine-status engine-missing';
       engineStatus.innerHTML =
-        '⚠️ Per-app routing needs the ProxiFyre engine. Without it, chosen apps stay on ' +
-        'your normal internet. <a id="getProxifyre">How to install</a>';
+        '⚠️ Per-app routing needs a one-time setup (ProxiFyre + driver). Without it, chosen ' +
+        'apps stay on your normal internet.' +
+        '<div class="engine-actions">' +
+        '<button id="runSetup" class="btn btn-sm btn-primary">Run automatic setup</button>' +
+        '<a id="getProxifyre">Set up manually</a>' +
+        '</div>';
+      const setupBtn = document.getElementById('runSetup') as HTMLButtonElement | null;
+      if (setupBtn) {
+        setupBtn.onclick = () => {
+          api.runSetup();
+          appendLog(
+            '\n[setup] Launched the automatic setup in a new window. Follow its prompts, ' +
+              'then click ↻ Refresh here when it finishes.',
+          );
+        };
+      }
       const link = document.getElementById('getProxifyre');
       if (link)
         link.onclick = () =>

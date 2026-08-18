@@ -16,6 +16,7 @@ const api = {
   disconnect: (): Promise<void> => ipcRenderer.invoke('vpn:disconnect'),
   getStatus: (): Promise<VpnStatus> => ipcRenderer.invoke('vpn:status'),
   relaunchAsAdmin: (): Promise<void> => ipcRenderer.invoke('app:relaunch-admin'),
+  runSetup: (): Promise<void> => ipcRenderer.invoke('app:run-setup'),
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('app:open-external', url),
 

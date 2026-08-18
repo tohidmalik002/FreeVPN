@@ -56,6 +56,7 @@ declare global {
       disconnect(): Promise<void>;
       getStatus(): Promise<VpnStatus>;
       relaunchAsAdmin(): Promise<void>;
+      runSetup(): Promise<void>;
       openExternal(url: string): Promise<void>;
       listApps(): Promise<AppEntry[]>;
       getSelectedApps(): Promise<AppEntry[]>;
