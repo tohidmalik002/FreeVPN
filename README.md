@@ -89,11 +89,22 @@ needs. It installs side-by-side with "OpenVPN Connect" and won't affect your wor
 
 **Option A — Download the ready-made build (easiest):**
 
-1. Go to the [**Releases**](https://github.com/tohidmalik002/FreeVPN/releases) page.
-2. Download **`FreeVPN Setup <version>.exe`** and run it.
-3. It asks for administrator rights automatically and creates shortcuts. Done.
+Go to the [**Releases**](https://github.com/tohidmalik002/FreeVPN/releases) page and grab one:
+
+- **`FreeVPN Setup <version>.exe`** — the **installer**. Run it, it self-elevates and creates
+  Start-menu + desktop shortcuts.
+- **`FreeVPN <version> portable.exe`** — the **portable** build. No install — just download and
+  run it (it still self-elevates for admin). Good for a USB stick or a quick try.
+
+Either way you still need OpenVPN Community from step 1.
 
 **Option B — Build from source:**
+
+_Prerequisites:_
+
+- **Node.js 18+** and npm — <https://nodejs.org/>
+- **Windows 10/11**
+- **Git** (or download the repo as a ZIP)
 
 ```bash
 git clone https://github.com/tohidmalik002/FreeVPN.git

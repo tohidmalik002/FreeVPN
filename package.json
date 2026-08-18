@@ -43,10 +43,17 @@
         {
           "target": "nsis",
           "arch": "x64"
+        },
+        {
+          "target": "portable",
+          "arch": "x64"
         }
       ],
       "icon": "build/icon.ico",
       "requestedExecutionLevel": "requireAdministrator"
+    },
+    "portable": {
+      "artifactName": "FreeVPN ${version} portable.exe"
     },
     "nsis": {
       "oneClick": false,
