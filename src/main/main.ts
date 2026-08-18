@@ -261,7 +261,20 @@ function registerIpc(): void {
   });
 }
 
+// Running elevated makes Chromium's shader disk-cache noisy (access-denied on
+// the cache dir); the cache is a perf nicety, so disable it to keep logs clean.
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+
+// Single-instance: a second launch just focuses the existing window instead of
+// spawning a competing process that would fight over the disk cache.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+app.on('second-instance', () => showWindow());
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   registerIpc();
 
   // Single source of truth for status → renderer + tray + window icon.
