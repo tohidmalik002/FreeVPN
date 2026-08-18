@@ -114,10 +114,7 @@ function renderStatus(s: VpnStatus): void {
   }
 
   disconnectBtn.disabled = !(s.phase === 'connected' || s.phase === 'connecting');
-  fastestBtn.disabled =
-    s.phase === 'connected' ||
-    s.phase === 'connecting' ||
-    s.phase === 'disconnecting';
+  updateFastestBtn();
   renderRows(); // reflect per-row button state
 }
 
@@ -212,6 +209,14 @@ function pickFastest(): VpnServer | null {
   return scored[0].s;
 }
 
+/** The Fastest button is usable only when idle AND at least one server exists. */
+function updateFastestBtn(): void {
+  const phase = currentStatus.phase;
+  const busy =
+    phase === 'connected' || phase === 'connecting' || phase === 'disconnecting';
+  fastestBtn.disabled = busy || allServers.length === 0;
+}
+
 async function connectFastest(): Promise<void> {
   const best = pickFastest();
   if (!best) {
@@ -229,6 +234,8 @@ async function loadServers(): Promise<void> {
   serverBody.innerHTML =
     '<tr><td colspan="7" class="empty">Loading server list…</td></tr>';
   refreshBtn.disabled = true;
+  allServers = [];
+  updateFastestBtn(); // no servers yet → Fastest stays disabled
   try {
     allServers = await api.listServers();
     renderRows();
@@ -237,6 +244,7 @@ async function loadServers(): Promise<void> {
     serverBody.innerHTML = `<tr><td colspan="7" class="empty">Failed to load: ${esc(msg)}</td></tr>`;
   } finally {
     refreshBtn.disabled = false;
+    updateFastestBtn(); // enable only if servers actually loaded
   }
 }
 

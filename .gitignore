@@ -1,6 +1,8 @@
 node_modules/
 dist/
 release/
+release2/
+release*/
 build/icon.png
 build/icon.ico
 vendor/openvpn/
