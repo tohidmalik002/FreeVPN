@@ -251,6 +251,16 @@ main {
   border-radius: 4px;
   letter-spacing: 0.5px;
 }
+.split-hint {
+  margin: -2px 0 10px;
+  padding: 8px 12px;
+  background: rgba(79, 140, 255, 0.08);
+  border: 1px solid rgba(79, 140, 255, 0.22);
+  border-radius: 8px;
+  color: #c8d6f5;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
 
 .table-wrap {
   flex: 1;

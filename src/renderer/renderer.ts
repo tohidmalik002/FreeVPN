@@ -20,6 +20,7 @@ const creditLink = $('credit');
 const privacyNotice = $('privacyNotice');
 const privacyAck = $<HTMLButtonElement>('privacyAck');
 const splitToggle = $<HTMLInputElement>('splitTunnel');
+const splitHint = $('splitHint');
 
 let allServers: VpnServer[] = [];
 let currentStatus: VpnStatus = { phase: 'disconnected' };
@@ -189,7 +190,7 @@ async function connectTo(server: VpnServer): Promise<void> {
     const splitTunnel = splitToggle.checked;
     appendLog(
       `\n=== Connecting to ${server.hostName} (${server.countryLong})` +
-        `${splitTunnel ? ' [split tunnel]' : ''} ===`,
+        `${splitTunnel ? ' [VPN for chosen apps only]' : ''} ===`,
     );
     await api.connect(server, { splitTunnel });
   } catch (err) {
@@ -267,6 +268,11 @@ clearLogBtn.onclick = () => {
 creditLink.onclick = (e) => {
   e.preventDefault();
   api.openExternal('https://github.com/tohidmalik002');
+};
+
+// Plain-language hint when "VPN for chosen apps only" is enabled.
+splitToggle.onchange = () => {
+  splitHint.classList.toggle('hidden', !splitToggle.checked);
 };
 
 // Privacy notice — shown until the user acknowledges it (remembered locally).
