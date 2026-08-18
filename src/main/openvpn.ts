@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
+import { guardChildProcess } from './jobguard';
 import { OpenVpnInfo, VpnServer, VpnStatus } from '../shared/types';
 
 const COMMUNITY_PATHS: Array<{ p: string; source: OpenVpnInfo['source'] }> = [
@@ -117,6 +118,15 @@ export class OpenVpnManager extends EventEmitter {
       windowsHide: true,
     });
     this.proc = proc;
+
+    // Tie the tunnel's lifetime to the app: if the app dies for ANY reason
+    // (crash, Task Manager, taskkill /F), the OS kills openvpn.exe too.
+    const armed = guardChildProcess(proc.pid);
+    this.log(
+      armed
+        ? '[guard] kill-on-exit armed — tunnel will stop if the app is killed'
+        : '[guard] kill-on-exit unavailable — relying on graceful shutdown only',
+    );
 
     const onData = (buf: Buffer) => {
       for (const line of buf.toString('utf8').split(/\r?\n/)) {

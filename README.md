@@ -93,10 +93,16 @@ Go to the [**Releases**](https://github.com/tohidmalik002/FreeVPN/releases) page
 
 - **`FreeVPN Setup <version>.exe`** — the **installer**. Run it, it self-elevates and creates
   Start-menu + desktop shortcuts.
-- **`FreeVPN <version> portable.exe`** — the **portable** build. No install — just download and
-  run it (it still self-elevates for admin). Good for a USB stick or a quick try.
+- **`FreeVPN-<version>-win.zip`** — the **portable** build. Extract the folder anywhere and run
+  **`FreeVPN.exe`** inside it (it self-elevates for admin). No install needed.
 
 Either way you still need OpenVPN Community from step 1.
+
+> **Antivirus / SmartScreen note:** the builds are **not code-signed** (a signing certificate
+> costs money), so Windows may warn "unknown publisher," or an antivirus may flag a download.
+> This is a false positive. If SmartScreen appears, click **More info → Run anyway**. The ZIP
+> build is provided precisely because the older self-extracting "portable .exe" format trips
+> more antivirus heuristics than a plain extracted `FreeVPN.exe`.
 
 **Option B — Build from source:**
 

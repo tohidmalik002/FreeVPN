@@ -21,6 +21,9 @@
     "dist:win": "npm run build && npm run icon && electron-builder --win",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
+  "dependencies": {
+    "koffi": "^2.9.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "electron": "^33.2.0",
@@ -45,15 +48,12 @@
           "arch": "x64"
         },
         {
-          "target": "portable",
+          "target": "zip",
           "arch": "x64"
         }
       ],
       "icon": "build/icon.ico",
       "requestedExecutionLevel": "requireAdministrator"
-    },
-    "portable": {
-      "artifactName": "FreeVPN ${version} portable.exe"
     },
     "nsis": {
       "oneClick": false,
