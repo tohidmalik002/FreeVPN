@@ -54,6 +54,24 @@ async function refreshEnv(): Promise<void> {
   banner.className = 'banner';
   banner.innerHTML = '';
 
+  // Per-app routing engine readiness (shown in the chosen-apps hint).
+  const engineStatus = document.getElementById('engineStatus');
+  if (engineStatus) {
+    if (env.proxifyre.found) {
+      engineStatus.className = 'engine-status engine-ok';
+      engineStatus.innerHTML = '✓ Per-app routing engine ready.';
+    } else {
+      engineStatus.className = 'engine-status engine-missing';
+      engineStatus.innerHTML =
+        '⚠️ Per-app routing needs the ProxiFyre engine. Without it, chosen apps stay on ' +
+        'your normal internet. <a id="getProxifyre">How to install</a>';
+      const link = document.getElementById('getProxifyre');
+      if (link)
+        link.onclick = () =>
+          api.openExternal('https://github.com/wiresock/proxifyre#readme');
+    }
+  }
+
   if (!env.openvpn.found) {
     banner.classList.add('error');
     banner.innerHTML =

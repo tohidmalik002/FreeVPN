@@ -63,13 +63,37 @@ Staging it this way means Stage 0 can be proven with just a browser — **no dri
 
 ---
 
-## Stage 1 (planned) — capture any app by PID
+## Stage 1 — capture any app by PID (built)
 
-1. Bundle/download **ProxiFyre** + its Windows Packet Filter driver.
-2. UI: pick an app (process list / browse for an .exe); write ProxiFyre's app list.
-3. Start ProxiFyre pointed at `127.0.0.1:1080` (our proxy) → the chosen app's traffic is forced
-   through the tunnel; everything else stays direct.
-4. Handle UDP and DNS properly; add a kill-switch (block the app if the tunnel drops).
+- **1a — app picker (done):** tick apps / add by file; saved to `userData/selected-apps.json`
+  (`src/main/apps.ts`, picker modal in the renderer).
+- **1b — ProxiFyre wiring (done, needs testing):** on connect in chosen-apps mode, FreeVPN
+  starts the in-process SOCKS proxy (`src/main/splitProxy.ts`) and **ProxiFyre**
+  (`src/main/proxifyre.ts`), which forces the selected exes' TCP into it. On disconnect/quit,
+  both stop.
 
-**Caveat:** packet-filter drivers are sometimes flagged by antivirus, and the driver install
-needs admin. This is the unavoidable tax of per-app tunnelling without our own signed driver.
+### One-time setup to actually route apps
+
+ProxiFyre and its driver are **not bundled** (a driver install needs admin and is your choice):
+
+1. Install the **Windows Packet Filter** driver + **ProxiFyre** from
+   <https://github.com/wiresock/proxifyre>.
+2. Put `ProxiFyre.exe` where FreeVPN looks for it — either:
+   - `vendor/proxifyre/ProxiFyre.exe` inside the app folder, or
+   - `C:\Program Files\ProxiFyre\ProxiFyre.exe`.
+3. FreeVPN detects it — the picker area shows **“✓ Per-app routing engine ready.”**
+
+Then: tick **VPN for chosen apps only**, pick apps, connect. FreeVPN writes ProxiFyre's
+`app-config.json` (your exes → `127.0.0.1:1080`) and starts it. Watch the connection log for
+`[split] per-app routing active for: …`.
+
+**If ProxiFyre is absent**, split mode still connects — it just skips per-app capture and logs
+that, so nothing breaks.
+
+### Isolation guarantee
+None of this runs unless you tick **VPN for chosen apps only** *and* have apps selected. With
+the toggle off (the default), the connect path is byte-for-byte the old whole-device VPN.
+
+### Still to do
+- UDP + DNS handling (Stage-0 TCP-only limits still apply); a kill-switch if the tunnel drops;
+  bundling ProxiFyre to remove the manual install.

@@ -10,7 +10,11 @@ import {
   saveSelectedApps,
   AppEntry,
 } from './apps';
+import { SplitProxy } from './splitProxy';
+import { ProxifyreManager, locateProxifyre } from './proxifyre';
 import { EnvInfo, VpnPhase, VpnServer, VpnStatus } from '../shared/types';
+
+const SPLIT_PROXY_PORT = 1080;
 
 // Project root (…/FreeVPN), whether running from source or packaged.
 const APP_ROOT = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', '..');
@@ -20,6 +24,47 @@ let tray: Tray | null = null;
 let isQuitting = false;
 let lastStatus: VpnStatus = { phase: 'disconnected' };
 const vpn = new OpenVpnManager();
+
+// --- per-app split tunnelling (only ever active when the user opts in) ---
+const splitProxy = new SplitProxy((line) => win?.webContents.send('vpn:log', line));
+const proxifyre = new ProxifyreManager();
+let splitRequested = false; // did the last connect ask for chosen-apps mode?
+let splitExes: string[] = []; // the chosen executables at connect time
+
+async function startSplitRouting(): Promise<void> {
+  // Guard: only run when the user chose split mode AND picked apps AND the
+  // engine is installed. Any failure here must NOT affect the VPN connection.
+  if (!splitRequested || splitExes.length === 0) return;
+  const pf = locateProxifyre(APP_ROOT);
+  if (!pf.found || !pf.path) {
+    win?.webContents.send(
+      'vpn:log',
+      '[split] per-app routing skipped — ProxiFyre not installed (connection is up as normal).',
+    );
+    return;
+  }
+  try {
+    await splitProxy.start(SPLIT_PROXY_PORT);
+    proxifyre.start(pf.path, splitExes, SPLIT_PROXY_PORT, (l) =>
+      win?.webContents.send('vpn:log', l),
+    );
+    win?.webContents.send(
+      'vpn:log',
+      `[split] per-app routing active for: ${splitExes.join(', ')}`,
+    );
+  } catch (e) {
+    win?.webContents.send(
+      'vpn:log',
+      `[split] could not start per-app routing: ${e instanceof Error ? e.message : e}`,
+    );
+    await stopSplitRouting();
+  }
+}
+
+async function stopSplitRouting(): Promise<void> {
+  proxifyre.stop();
+  await splitProxy.stop().catch(() => undefined);
+}
 
 // Tray/app icon colour per connection phase.
 const PHASE_COLOR: Record<VpnPhase, string> = {
@@ -151,6 +196,7 @@ function registerIpc(): void {
     return {
       isAdmin: await isAdmin(),
       openvpn: locateOpenVpn(APP_ROOT),
+      proxifyre: locateProxifyre(APP_ROOT),
     };
   });
 
@@ -167,6 +213,9 @@ function registerIpc(): void {
           'openvpn.exe not found. Install OpenVPN Community from openvpn.net/community.',
         );
       }
+      // Remember whether this connection wants per-app routing (and for which apps).
+      splitRequested = !!opts?.splitTunnel;
+      splitExes = splitRequested ? loadSelectedApps().map((a) => a.exe) : [];
       await vpn.connect(server, info.path, opts ?? {});
     },
   );
@@ -210,6 +259,13 @@ app.whenReady().then(() => {
     win?.webContents.send('vpn:status', s);
     win?.setIcon(iconFor(s.phase, 256));
     updateTray(s);
+
+    // Drive per-app routing off the connection lifecycle (opt-in only).
+    if (s.phase === 'connected') {
+      startSplitRouting().catch(() => undefined);
+    } else if (s.phase === 'disconnected' || s.phase === 'error') {
+      stopSplitRouting().catch(() => undefined);
+    }
   });
   vpn.on('log', (line: string) => win?.webContents.send('vpn:log', line));
 
@@ -231,5 +287,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   isQuitting = true;
+  await stopSplitRouting().catch(() => undefined);
   await vpn.disconnect().catch(() => undefined);
 });

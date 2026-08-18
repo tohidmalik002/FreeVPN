@@ -38,6 +38,7 @@ export interface OpenVpnInfo {
 export interface EnvInfo {
   isAdmin: boolean;
   openvpn: OpenVpnInfo;
+  proxifyre: { found: boolean; path?: string };
 }
 
 export interface AppEntry {
