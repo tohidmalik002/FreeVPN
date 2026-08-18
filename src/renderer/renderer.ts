@@ -117,6 +117,7 @@ async function refreshEnv(): Promise<void> {
 function renderStatus(s: VpnStatus): void {
   currentStatus = s;
   connectingHost = s.phase === 'connecting' ? s.server?.hostName ?? null : null;
+  handleFailover(s);
 
   const dotClass =
     s.phase === 'connected'
@@ -209,10 +210,16 @@ function renderRows(): void {
   serverBody.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((b) => {
     const act = b.dataset.act;
     if (act === 'disconnect') {
-      b.onclick = () => api.disconnect();
+      b.onclick = () => {
+        failoverActive = false;
+        api.disconnect();
+      };
     } else if (act === 'connect') {
       const idx = Number(b.dataset.i);
-      b.onclick = () => connectTo(rows[idx]);
+      b.onclick = () => {
+        failoverActive = false; // manual pick cancels any Quick Connect in progress
+        connectTo(rows[idx]);
+      };
     }
   });
 }
@@ -232,19 +239,15 @@ async function connectTo(server: VpnServer): Promise<void> {
   }
 }
 
-/**
- * Pick the "fastest" server: prefer responsive relays (ping > 0), rank by a
- * simple speed-per-ping score, and require enough spare capacity.
- */
-function pickFastest(): VpnServer | null {
+/** Rank servers best-first by a simple speed-per-ping score. */
+function rankedCandidates(): VpnServer[] {
   const candidates = allServers.filter((s) => s.speedMbps > 0);
-  if (candidates.length === 0) return allServers[0] ?? null;
-  const scored = candidates.map((s) => {
+  const scored = (candidates.length ? candidates : allServers).map((s) => {
     const ping = s.ping > 0 ? s.ping : 200; // treat unknown ping as mediocre
     return { s, rank: s.speedMbps / Math.sqrt(ping) };
   });
   scored.sort((a, b) => b.rank - a.rank);
-  return scored[0].s;
+  return scored.map((x) => x.s);
 }
 
 /** The Fastest button is usable only when idle AND at least one server exists. */
@@ -255,17 +258,48 @@ function updateFastestBtn(): void {
   fastestBtn.disabled = busy || allServers.length === 0;
 }
 
+// Auto-failover: VPN Gate servers are often dead, so "Fastest" walks down the
+// ranked list until one actually connects.
+let failoverQueue: VpnServer[] = [];
+let failoverActive = false;
+const FAILOVER_TRIES = 6;
+
 async function connectFastest(): Promise<void> {
-  const best = pickFastest();
-  if (!best) {
+  const ranked = rankedCandidates();
+  if (ranked.length === 0) {
     appendLog('No servers available to connect.');
     return;
   }
+  failoverQueue = ranked.slice(0, FAILOVER_TRIES);
+  failoverActive = true;
   appendLog(
-    `\n⚡ Auto-picked fastest: ${best.countryLong} · ${best.hostName} ` +
-      `(${best.speedMbps} Mbps, ${best.ping || '?'} ms)`,
+    `\n⚡ Quick Connect — trying up to ${failoverQueue.length} fastest servers until one works…`,
   );
-  await connectTo(best);
+  connectNextCandidate();
+}
+
+function connectNextCandidate(): void {
+  const next = failoverQueue.shift();
+  if (!next) {
+    failoverActive = false;
+    appendLog('⚡ All candidates failed. Hit ↻ Refresh for a fresh server list and retry.');
+    return;
+  }
+  appendLog(
+    `→ trying ${flag(next.countryShort)} ${next.countryLong} · ${next.hostName} ` +
+      `(${next.speedMbps} Mbps, ${next.ping || '?'} ms)`,
+  );
+  connectTo(next);
+}
+
+/** During a Quick Connect, advance to the next server when one fails. */
+function handleFailover(s: VpnStatus): void {
+  if (!failoverActive) return;
+  if (s.phase === 'connected') {
+    failoverActive = false;
+  } else if (s.phase === 'error') {
+    setTimeout(connectNextCandidate, 300);
+  }
 }
 
 async function loadServers(): Promise<void> {
@@ -291,7 +325,10 @@ refreshBtn.onclick = () => {
   loadServers();
   refreshEnv();
 };
-disconnectBtn.onclick = () => api.disconnect();
+disconnectBtn.onclick = () => {
+  failoverActive = false;
+  api.disconnect();
+};
 fastestBtn.onclick = () => connectFastest();
 searchInput.oninput = () => renderRows();
 clearLogBtn.onclick = () => {
