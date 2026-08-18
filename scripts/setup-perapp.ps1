@@ -48,7 +48,7 @@ function Get-LatestAsset($repo, $pattern) {
 }
 
 # --- 1. ProxiFyre ---
-Write-Host "[1/3] ProxiFyre" -ForegroundColor White
+Write-Host "[1/2] ProxiFyre" -ForegroundColor White
 try {
   $url = $ProxifyreUrl
   if (-not $url) {
@@ -76,26 +76,9 @@ try {
   Warn "  $vendor"
 }
 
-# --- 2. .NET Desktop Runtime ---
+# --- 2. Windows Packet Filter driver ---
 Write-Host ""
-Write-Host "[2/3] .NET Desktop Runtime (ProxiFyre needs it)" -ForegroundColor White
-$hasDotnet = $false
-try {
-  $rts = (& dotnet --list-runtimes) | Out-String
-  if ($rts -match "Microsoft\.WindowsDesktop\.App (8|9)\.") { $hasDotnet = $true }
-} catch {
-  $hasDotnet = $false
-}
-if ($hasDotnet) {
-  Ok ".NET Desktop Runtime present"
-} else {
-  Warn "Not detected. If ProxiFyre won't start, install the .NET Desktop Runtime (8.0+ x64):"
-  Warn "  https://dotnet.microsoft.com/download/dotnet"
-}
-
-# --- 3. Windows Packet Filter driver ---
-Write-Host ""
-Write-Host "[3/3] Windows Packet Filter driver" -ForegroundColor White
+Write-Host "[2/2] Windows Packet Filter driver" -ForegroundColor White
 $svc = Get-Service -Name "ndisrd" -ErrorAction SilentlyContinue
 if ($svc) {
   Ok "Driver already installed (service 'ndisrd' present)"
