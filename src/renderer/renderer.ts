@@ -1,4 +1,4 @@
-import type { EnvInfo, VpnServer, VpnStatus } from './global';
+import type { AppEntry, EnvInfo, VpnServer, VpnStatus } from './global';
 
 const api = window.api;
 
@@ -273,6 +273,129 @@ creditLink.onclick = (e) => {
 // Plain-language hint when "VPN for chosen apps only" is enabled.
 splitToggle.onchange = () => {
   splitHint.classList.toggle('hidden', !splitToggle.checked);
+  if (splitToggle.checked) updateAppsSummary();
+};
+
+// ---- app picker ----
+const chooseAppsBtn = $<HTMLButtonElement>('chooseAppsBtn');
+const appsSummary = $('appsSummary');
+const appModal = $('appModal');
+const appModalClose = $('appModalClose');
+const appCancel = $<HTMLButtonElement>('appCancel');
+const appSave = $<HTMLButtonElement>('appSave');
+const appSearch = $<HTMLInputElement>('appSearch');
+const addByFile = $<HTMLButtonElement>('addByFile');
+const appList = $('appList');
+const appCount = $('appCount');
+
+let knownApps: AppEntry[] = []; // running ∪ selected
+const runningExes = new Set<string>();
+const workingSel = new Map<string, AppEntry>(); // exe -> entry
+
+async function updateAppsSummary(): Promise<void> {
+  const selected = await api.getSelectedApps();
+  if (selected.length === 0) {
+    appsSummary.textContent = 'No apps chosen yet';
+  } else {
+    const names = selected.map((a) => a.name || a.exe);
+    appsSummary.textContent =
+      `${selected.length} app${selected.length === 1 ? '' : 's'}: ` +
+      names.slice(0, 3).join(', ') +
+      (names.length > 3 ? `, +${names.length - 3} more` : '');
+  }
+}
+
+async function openAppModal(): Promise<void> {
+  appModal.classList.remove('hidden');
+  appList.innerHTML = '<div class="app-empty">Loading running apps…</div>';
+  const [running, selected] = await Promise.all([
+    api.listApps(),
+    api.getSelectedApps(),
+  ]);
+  runningExes.clear();
+  running.forEach((a) => runningExes.add(a.exe));
+
+  workingSel.clear();
+  selected.forEach((a) => workingSel.set(a.exe, a));
+
+  // merge: running first, then any selected apps that aren't currently running
+  const byExe = new Map<string, AppEntry>();
+  running.forEach((a) => byExe.set(a.exe, a));
+  selected.forEach((a) => {
+    if (!byExe.has(a.exe)) byExe.set(a.exe, a);
+  });
+  knownApps = Array.from(byExe.values()).sort((a, b) =>
+    (a.name || a.exe).localeCompare(b.name || b.exe),
+  );
+
+  appSearch.value = '';
+  renderApps();
+}
+
+function renderApps(): void {
+  const q = appSearch.value.trim().toLowerCase();
+  const rows = knownApps.filter(
+    (a) =>
+      !q || a.name.toLowerCase().includes(q) || a.exe.toLowerCase().includes(q),
+  );
+  if (rows.length === 0) {
+    appList.innerHTML = '<div class="app-empty">No matching apps.</div>';
+  } else {
+    appList.innerHTML = rows
+      .map((a, i) => {
+        const checked = workingSel.has(a.exe) ? 'checked' : '';
+        const badge = runningExes.has(a.exe)
+          ? ''
+          : '<span class="not-running">not running</span>';
+        return `<label class="app-row">
+          <input type="checkbox" data-i="${i}" ${checked} />
+          <div><div class="app-name">${esc(a.name)}</div>
+          <div class="app-exe">${esc(a.exe)}</div></div>${badge}
+        </label>`;
+      })
+      .join('');
+    appList.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) => {
+      cb.onchange = () => {
+        const app = rows[Number(cb.dataset.i)];
+        if (cb.checked) workingSel.set(app.exe, app);
+        else workingSel.delete(app.exe);
+        updateModalCount();
+      };
+    });
+  }
+  updateModalCount();
+}
+
+function updateModalCount(): void {
+  const n = workingSel.size;
+  appCount.textContent = `${n} app${n === 1 ? '' : 's'} selected`;
+}
+
+function closeAppModal(): void {
+  appModal.classList.add('hidden');
+}
+
+chooseAppsBtn.onclick = () => openAppModal();
+appModalClose.onclick = () => closeAppModal();
+appCancel.onclick = () => closeAppModal();
+appModal.onclick = (e) => {
+  if (e.target === appModal) closeAppModal();
+};
+appSearch.oninput = () => renderApps();
+appSave.onclick = async () => {
+  await api.setSelectedApps(Array.from(workingSel.values()));
+  await updateAppsSummary();
+  closeAppModal();
+};
+addByFile.onclick = async () => {
+  const picked = await api.browseForApp();
+  if (!picked) return;
+  if (!knownApps.some((a) => a.exe === picked.exe)) {
+    knownApps.push(picked);
+    knownApps.sort((a, b) => (a.name || a.exe).localeCompare(b.name || b.exe));
+  }
+  workingSel.set(picked.exe, picked);
+  renderApps();
 };
 
 // Privacy notice — shown until the user acknowledges it (remembered locally).
@@ -291,4 +414,5 @@ api.onLog((line) => appendLog(line));
 // initial load
 refreshEnv();
 loadServers();
+updateAppsSummary();
 api.getStatus().then(renderStatus);

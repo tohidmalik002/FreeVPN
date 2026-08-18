@@ -1,9 +1,15 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } from 'electron';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import { fetchServers } from './vpngate';
 import { OpenVpnManager, locateOpenVpn, isAdmin } from './openvpn';
 import { shieldPng } from './icon';
+import {
+  listRunningApps,
+  loadSelectedApps,
+  saveSelectedApps,
+  AppEntry,
+} from './apps';
 import { EnvInfo, VpnPhase, VpnServer, VpnStatus } from '../shared/types';
 
 // Project root (…/FreeVPN), whether running from source or packaged.
@@ -170,6 +176,23 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('vpn:status', () => vpn.getStatus());
+
+  ipcMain.handle('apps:list', () => listRunningApps());
+  ipcMain.handle('apps:getSelected', () => loadSelectedApps());
+  ipcMain.handle('apps:setSelected', (_e, apps: AppEntry[]) => saveSelectedApps(apps));
+
+  ipcMain.handle('apps:browse', async (): Promise<AppEntry | null> => {
+    const res = await dialog.showOpenDialog({
+      title: 'Choose an app (.exe) to route through the VPN',
+      properties: ['openFile'],
+      filters: [{ name: 'Applications', extensions: ['exe'] }],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const p = res.filePaths[0];
+    const exe = path.basename(p).toLowerCase();
+    const name = path.basename(p, path.extname(p));
+    return { name, exe, path: p };
+  });
 
   ipcMain.handle('app:relaunch-admin', () => relaunchAsAdmin());
 

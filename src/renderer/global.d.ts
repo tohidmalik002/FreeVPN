@@ -40,6 +40,12 @@ export interface EnvInfo {
   openvpn: OpenVpnInfo;
 }
 
+export interface AppEntry {
+  name: string;
+  exe: string;
+  path?: string;
+}
+
 declare global {
   interface Window {
     api: {
@@ -50,6 +56,10 @@ declare global {
       getStatus(): Promise<VpnStatus>;
       relaunchAsAdmin(): Promise<void>;
       openExternal(url: string): Promise<void>;
+      listApps(): Promise<AppEntry[]>;
+      getSelectedApps(): Promise<AppEntry[]>;
+      setSelectedApps(apps: AppEntry[]): Promise<void>;
+      browseForApp(): Promise<AppEntry | null>;
       onStatus(cb: (s: VpnStatus) => void): void;
       onLog(cb: (line: string) => void): void;
     };
