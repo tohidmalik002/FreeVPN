@@ -15,6 +15,17 @@ interface VpnAdapter {
   name: string;
   ifIndex: number;
   ip: string;
+  gateway: string; // tunnel next-hop (peer) — required to route hosts into the tunnel
+}
+
+/** For a /30 point-to-point link, the peer is the other usable host address. */
+function computePeer(ip: string): string {
+  const p = ip.split('.').map(Number);
+  const base = p[3] & 0xfc; // /30 network's last octet
+  const h1 = base + 1;
+  const h2 = base + 2;
+  p[3] = p[3] === h1 ? h2 : h1;
+  return p.join('.');
 }
 
 function ps(command: string): Promise<string> {
@@ -68,7 +79,20 @@ export class SplitProxy {
         .map((x: { IPAddress: string }) => x.IPAddress)
         .find((x: string) => x && !x.startsWith('169.254'));
       if (ip && looksVpn(a)) {
-        return { name: a.Name, ifIndex: a.InterfaceIndex, ip };
+        // Find the tunnel next-hop (gateway). Prefer the adapter's configured
+        // gateway; fall back to the /30 peer address.
+        let gateway = '';
+        try {
+          const g = await ps(
+            `(Get-NetIPConfiguration -InterfaceIndex ${a.InterfaceIndex}` +
+              ' -ErrorAction SilentlyContinue).IPv4DefaultGateway.NextHop',
+          );
+          if (g && /^\d+\.\d+\.\d+\.\d+$/.test(g.trim())) gateway = g.trim();
+        } catch {
+          /* fall through */
+        }
+        if (!gateway) gateway = computePeer(ip);
+        return { name: a.Name, ifIndex: a.InterfaceIndex, ip, gateway };
       }
     }
     throw new Error('no VPN tunnel adapter found (is the VPN connected?)');
@@ -80,7 +104,8 @@ export class SplitProxy {
     if (n === 0 && this.vpn) {
       await run('netsh', [
         'interface', 'ipv4', 'add', 'route',
-        `${destIp}/32`, `interface=${this.vpn.ifIndex}`, 'store=active',
+        `${destIp}/32`, `interface=${this.vpn.ifIndex}`,
+        `nexthop=${this.vpn.gateway}`, 'store=active',
       ]);
     }
   }
@@ -93,6 +118,7 @@ export class SplitProxy {
         await run('netsh', [
           'interface', 'ipv4', 'delete', 'route',
           `${destIp}/32`, `interface=${this.vpn.ifIndex}`,
+          `nexthop=${this.vpn.gateway}`,
         ]);
       }
     } else {
@@ -130,6 +156,7 @@ export class SplitProxy {
             dns.lookup(host, { family: 4 }, (e, addr) => (e ? rej(e) : res(addr))),
           );
           await this.addRoute(destIp);
+          this.log(`[split] → ${host}:${port} (${destIp}) via tunnel`);
 
           const upstream = net.connect(
             { host: destIp, port, localAddress: this.vpn!.ip },
@@ -170,7 +197,8 @@ export class SplitProxy {
     if (this.server) return;
     this.vpn = await this.findVpnAdapter();
     this.log(
-      `[split] proxy egress via ${this.vpn.name} (ip=${this.vpn.ip}) on 127.0.0.1:${port}`,
+      `[split] proxy egress via ${this.vpn.name} (ip=${this.vpn.ip}, ` +
+        `gw=${this.vpn.gateway}) on 127.0.0.1:${port}`,
     );
     await new Promise<void>((resolve, reject) => {
       const server = net.createServer((s) => this.handleClient(s));
