@@ -15,7 +15,7 @@ Made by [**@tohidmalik002**](https://github.com/tohidmalik002) · License: GPL-2
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [Privacy warning](#-privacy-warning)
-- [Prerequisites](#prerequisites)
+- [Install](#install)
 - [Run from source](#run-from-source)
 - [Development](#development)
 - [Build a Windows installer](#build-a-windows-installer)
@@ -74,16 +74,37 @@ geo-blocks, but **you are routing traffic through a stranger's machine**.
 - For real privacy, self-host **WireGuard** on a VPS you control, or use an audited paid
   provider.
 
-## Prerequisites
+## Install
 
-1. **OpenVPN Community** — provides `openvpn.exe` plus the network driver (Wintun/TAP).
-   Download from <https://openvpn.net/community-downloads/> and install with defaults.
-   It coexists with OpenVPN Connect. FreeVPN auto-detects it at
-   `C:\Program Files\OpenVPN\bin\openvpn.exe`.
-   _(Alternatively, drop a portable `openvpn.exe` into `vendor/openvpn/` to make FreeVPN
-   fully standalone — it checks there first.)_
-2. **Node.js 18+** — to build/run from source.
-3. **Administrator rights** — OpenVPN needs them to configure the VPN adapter.
+You need **two** things: **OpenVPN** (the engine that does the actual connecting) and
+**FreeVPN** (this app, which finds servers and drives OpenVPN).
+
+### 1. Install OpenVPN Community (required)
+
+Download and run the installer from <https://openvpn.net/community-downloads/>, and **keep all
+the default options**. That's it — the default install already includes everything FreeVPN
+needs. It installs side-by-side with "OpenVPN Connect" and won't affect your work setup.
+
+### 2. Get FreeVPN — pick one
+
+**Option A — Download the ready-made build (easiest):**
+
+1. Go to the [**Releases**](https://github.com/tohidmalik002/FreeVPN/releases) page.
+2. Download **`FreeVPN Setup <version>.exe`** and run it.
+3. It asks for administrator rights automatically and creates shortcuts. Done.
+
+**Option B — Build from source:**
+
+```bash
+git clone https://github.com/tohidmalik002/FreeVPN.git
+cd FreeVPN
+npm install
+npm start          # builds, then launches Electron
+```
+
+> **Note:** FreeVPN must run **as administrator** (OpenVPN needs it to set up the connection).
+> The installed build handles this for you. From source, use `Run FreeVPN (Admin).cmd` or the
+> in-app "Relaunch as admin" button — see below.
 
 ## Run from source
 
@@ -147,7 +168,7 @@ The renderer is deliberately isolated (`rootDir: src/renderer`) and can't import
 
 - **Node.js 18+** and npm.
 - **Windows 10/11** (the app spawns `openvpn.exe` and uses Windows-only elevation).
-- For actually connecting: **OpenVPN Community** installed (see [Prerequisites](#prerequisites)),
+- For actually connecting: **OpenVPN Community** installed (see [Install](#install)),
   and the app running **as administrator**.
 
 ## Build a Windows installer

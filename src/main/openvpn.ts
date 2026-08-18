@@ -172,7 +172,8 @@ export class OpenVpnManager extends EventEmitter {
     if (/There are no TAP-Windows|All TAP-Windows adapters|Cannot find/i.test(line)) {
       this.setStatus({
         phase: 'error',
-        message: 'No VPN network adapter found — install OpenVPN Community (TAP/Wintun).',
+        message:
+          'No VPN network adapter found — reinstall OpenVPN Community with the default options.',
       });
       return;
     }
