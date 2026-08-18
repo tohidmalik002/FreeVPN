@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } from 'electron';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { fetchServers } from './vpngate';
 import { OpenVpnManager, locateOpenVpn, isAdmin } from './openvpn';
@@ -246,14 +247,23 @@ function registerIpc(): void {
   ipcMain.handle('app:relaunch-admin', () => relaunchAsAdmin());
 
   ipcMain.handle('app:run-setup', () => {
-    // Launch the per-app setup script in its own console window so the user sees
-    // progress. The app already runs elevated, so the child inherits admin.
+    // Launch the per-app setup script in its OWN console window so the user sees
+    // progress. A GUI process has no console, so a detached powershell child gets
+    // no visible window — `start` forces cmd to allocate a new console window.
+    // The app already runs elevated, so the child inherits admin.
     const ps1 = path.join(APP_ROOT, 'scripts', 'setup-perapp.ps1');
-    spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', ps1],
-      { cwd: APP_ROOT, detached: true, windowsHide: false },
-    ).unref();
+    if (!fs.existsSync(ps1)) {
+      win?.webContents.send('vpn:log', `[setup] script not found at ${ps1}`);
+      return;
+    }
+    const cmd =
+      `start "FreeVPN Setup" powershell -NoProfile -NoExit ` +
+      `-ExecutionPolicy Bypass -File "${ps1}"`;
+    exec(cmd, { windowsHide: true }, (err) => {
+      if (err) {
+        win?.webContents.send('vpn:log', `[setup] failed to launch: ${err.message}`);
+      }
+    });
   });
 
   ipcMain.handle('app:open-external', (_e, url: string) => {
