@@ -1,0 +1,52 @@
+{
+  "name": "freevpn",
+  "version": "0.1.0",
+  "description": "FreeVPN — a Windows desktop client for the free public VPN Gate network, driving OpenVPN Community under the hood.",
+  "main": "dist/main/main.js",
+  "author": "",
+  "license": "GPL-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron .",
+    "icon": "node scripts/gen-icon.js",
+    "dist:win": "npm run build && npm run icon && electron-builder --win",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3"
+  },
+  "build": {
+    "appId": "com.freevpn.app",
+    "productName": "FreeVPN",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FreeVPN"
+    }
+  }
+}

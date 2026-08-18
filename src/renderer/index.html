@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self';"
+    />
+    <title>FreeVPN</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🛡️</span>
+        <div>
+          <div class="brand-name">FreeVPN</div>
+          <div class="brand-sub">Public VPN Gate relays · OpenVPN</div>
+        </div>
+      </div>
+
+      <div class="status" id="status">
+        <span class="dot" id="statusDot"></span>
+        <div class="status-text">
+          <div class="status-phase" id="statusPhase">Disconnected</div>
+          <div class="status-detail" id="statusDetail">Not connected</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="fastestBtn" class="btn btn-primary">⚡ Fastest</button>
+        <button id="disconnectBtn" class="btn btn-danger" disabled>Disconnect</button>
+        <button id="refreshBtn" class="btn">↻ Refresh</button>
+      </div>
+    </header>
+
+    <div id="banner" class="banner hidden"></div>
+
+    <main>
+      <div class="toolbar">
+        <input id="search" class="search" type="text" placeholder="Filter by country…" />
+        <div class="count" id="count">—</div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="serverTable">
+          <thead>
+            <tr>
+              <th>Country</th>
+              <th>Host</th>
+              <th class="num">Ping</th>
+              <th class="num">Speed</th>
+              <th class="num">Sessions</th>
+              <th>Proto</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="serverBody">
+            <tr>
+              <td colspan="7" class="empty">Loading server list…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <section class="logs">
+      <div class="logs-head">
+        <span>Connection log</span>
+        <button id="clearLog" class="btn btn-ghost">Clear</button>
+      </div>
+      <pre id="log" class="log"></pre>
+    </section>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
