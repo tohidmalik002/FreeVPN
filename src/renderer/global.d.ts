@@ -45,7 +45,7 @@ declare global {
     api: {
       getEnv(): Promise<EnvInfo>;
       listServers(): Promise<VpnServer[]>;
-      connect(server: VpnServer): Promise<void>;
+      connect(server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void>;
       disconnect(): Promise<void>;
       getStatus(): Promise<VpnStatus>;
       relaunchAsAdmin(): Promise<void>;

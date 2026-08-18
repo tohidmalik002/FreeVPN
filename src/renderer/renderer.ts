@@ -19,6 +19,7 @@ const clearLogBtn = $('clearLog');
 const creditLink = $('credit');
 const privacyNotice = $('privacyNotice');
 const privacyAck = $<HTMLButtonElement>('privacyAck');
+const splitToggle = $<HTMLInputElement>('splitTunnel');
 
 let allServers: VpnServer[] = [];
 let currentStatus: VpnStatus = { phase: 'disconnected' };
@@ -185,8 +186,12 @@ function renderRows(): void {
 
 async function connectTo(server: VpnServer): Promise<void> {
   try {
-    appendLog(`\n=== Connecting to ${server.hostName} (${server.countryLong}) ===`);
-    await api.connect(server);
+    const splitTunnel = splitToggle.checked;
+    appendLog(
+      `\n=== Connecting to ${server.hostName} (${server.countryLong})` +
+        `${splitTunnel ? ' [split tunnel]' : ''} ===`,
+    );
+    await api.connect(server, { splitTunnel });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     appendLog(`ERROR: ${msg}`);

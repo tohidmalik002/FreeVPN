@@ -152,15 +152,18 @@ function registerIpc(): void {
     return fetchServers();
   });
 
-  ipcMain.handle('vpn:connect', async (_e, server: VpnServer): Promise<void> => {
-    const info = locateOpenVpn(APP_ROOT);
-    if (!info.found || !info.path) {
-      throw new Error(
-        'openvpn.exe not found. Install OpenVPN Community from openvpn.net/community.',
-      );
-    }
-    await vpn.connect(server, info.path);
-  });
+  ipcMain.handle(
+    'vpn:connect',
+    async (_e, server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void> => {
+      const info = locateOpenVpn(APP_ROOT);
+      if (!info.found || !info.path) {
+        throw new Error(
+          'openvpn.exe not found. Install OpenVPN Community from openvpn.net/community.',
+        );
+      }
+      await vpn.connect(server, info.path, opts ?? {});
+    },
+  );
 
   ipcMain.handle('vpn:disconnect', async (): Promise<void> => {
     await vpn.disconnect();

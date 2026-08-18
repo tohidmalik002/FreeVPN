@@ -72,7 +72,11 @@ export class OpenVpnManager extends EventEmitter {
     this.emit('log', line);
   }
 
-  async connect(server: VpnServer, openvpnPath: string): Promise<void> {
+  async connect(
+    server: VpnServer,
+    openvpnPath: string,
+    opts: { splitTunnel?: boolean } = {},
+  ): Promise<void> {
     if (this.proc) {
       await this.disconnect();
     }
@@ -111,6 +115,15 @@ export class OpenVpnManager extends EventEmitter {
       'ignore',
       'block-outside-dns',
     ];
+
+    // Split-tunnel mode: don't let the server make the tunnel the default route.
+    // The tunnel adapter still comes up with an IP, so specific apps can be routed
+    // through it (see tools/split-proxy.js), while the rest of the system stays direct.
+    if (opts.splitTunnel) {
+      args.push('--pull-filter', 'ignore', 'redirect-gateway');
+      args.push('--pull-filter', 'ignore', 'redirect-gateway-ipv6');
+      this.log('[split] split-tunnel mode: tunnel will NOT be the default route');
+    }
 
     this.log(`$ openvpn --config server.ovpn  (${server.hostName})`);
     const proc = spawn(openvpnPath, args, {

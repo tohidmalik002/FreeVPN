@@ -5,8 +5,8 @@ import { EnvInfo, VpnServer, VpnStatus } from '../shared/types';
 const api = {
   getEnv: (): Promise<EnvInfo> => ipcRenderer.invoke('env:info'),
   listServers: (): Promise<VpnServer[]> => ipcRenderer.invoke('vpn:list'),
-  connect: (server: VpnServer): Promise<void> =>
-    ipcRenderer.invoke('vpn:connect', server),
+  connect: (server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void> =>
+    ipcRenderer.invoke('vpn:connect', server, opts),
   disconnect: (): Promise<void> => ipcRenderer.invoke('vpn:disconnect'),
   getStatus: (): Promise<VpnStatus> => ipcRenderer.invoke('vpn:status'),
   relaunchAsAdmin: (): Promise<void> => ipcRenderer.invoke('app:relaunch-admin'),
