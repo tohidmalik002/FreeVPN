@@ -36,6 +36,16 @@
 
     <div id="banner" class="banner hidden"></div>
 
+    <div id="privacyNotice" class="privacy hidden">
+      <span class="privacy-icon">⚠️</span>
+      <span class="privacy-text">
+        <b>These are free volunteer-run servers (VPN Gate).</b> Your traffic passes through a
+        stranger's machine — great for a foreign IP or geo-unblocking, but
+        <b>don't use it for banking, logins, or anything sensitive.</b> Stick to HTTPS sites.
+      </span>
+      <button id="privacyAck" class="btn btn-sm">Got it</button>
+    </div>
+
     <main>
       <div class="toolbar">
         <input id="search" class="search" type="text" placeholder="Filter by country…" />
@@ -67,7 +77,10 @@
     <section class="logs">
       <div class="logs-head">
         <span>Connection log</span>
-        <button id="clearLog" class="btn btn-ghost">Clear</button>
+        <div class="logs-head-right">
+          <a id="credit" class="credit" href="#">Built by @tohidmalik002</a>
+          <button id="clearLog" class="btn btn-ghost">Clear</button>
+        </div>
       </div>
       <pre id="log" class="log"></pre>
     </section>

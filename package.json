@@ -3,8 +3,16 @@
   "version": "0.1.0",
   "description": "FreeVPN — a Windows desktop client for the free public VPN Gate network, driving OpenVPN Community under the hood.",
   "main": "dist/main/main.js",
-  "author": "",
+  "author": "tohidmalik002 (https://github.com/tohidmalik002)",
   "license": "GPL-2.0",
+  "homepage": "https://github.com/tohidmalik002/FreeVPN#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tohidmalik002/FreeVPN.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tohidmalik002/FreeVPN/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.js",
     "start": "npm run build && electron .",

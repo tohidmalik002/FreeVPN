@@ -47,12 +47,14 @@ function createWindow(): void {
   win.setIcon(iconFor('disconnected', 256));
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
-  // Minimize-to-tray: closing the window hides it instead of quitting.
-  win.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
-      win?.hide();
-    }
+  // Minimize button → hide to the tray (VPN keeps running; tray shows state).
+  win.on('minimize', () => {
+    win?.hide();
+  });
+
+  // Closing the window (✕) disconnects and quits — no invisible-VPN surprise.
+  win.on('close', () => {
+    isQuitting = true;
   });
 
   win.on('closed', () => {
@@ -194,10 +196,11 @@ app.whenReady().then(() => {
   });
 });
 
-// Minimize-to-tray means we do NOT quit when the window closes; the app keeps
-// running in the tray. Quit happens via the tray menu or before-quit.
+// Closing the window quits the app (and before-quit tears down the tunnel).
+// Minimize-to-tray uses hide(), which does NOT fire window-all-closed, so the
+// app still lives in the tray while minimized.
 app.on('window-all-closed', () => {
-  // no-op on Windows: stay alive in the tray
+  app.quit();
 });
 
 app.on('before-quit', async () => {

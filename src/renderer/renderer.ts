@@ -16,6 +16,9 @@ const countEl = $('count');
 const serverBody = $('serverBody');
 const logEl = $('log');
 const clearLogBtn = $('clearLog');
+const creditLink = $('credit');
+const privacyNotice = $('privacyNotice');
+const privacyAck = $<HTMLButtonElement>('privacyAck');
 
 let allServers: VpnServer[] = [];
 let currentStatus: VpnStatus = { phase: 'disconnected' };
@@ -247,6 +250,20 @@ fastestBtn.onclick = () => connectFastest();
 searchInput.oninput = () => renderRows();
 clearLogBtn.onclick = () => {
   logEl.textContent = '';
+};
+creditLink.onclick = (e) => {
+  e.preventDefault();
+  api.openExternal('https://github.com/tohidmalik002');
+};
+
+// Privacy notice — shown until the user acknowledges it (remembered locally).
+const PRIVACY_KEY = 'freevpn.privacyAck';
+if (localStorage.getItem(PRIVACY_KEY) !== '1') {
+  privacyNotice.classList.remove('hidden');
+}
+privacyAck.onclick = () => {
+  localStorage.setItem(PRIVACY_KEY, '1');
+  privacyNotice.classList.add('hidden');
 };
 
 api.onStatus((s) => renderStatus(s));

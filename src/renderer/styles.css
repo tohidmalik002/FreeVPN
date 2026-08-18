@@ -175,6 +175,28 @@ body {
   display: none !important;
 }
 
+/* ---- privacy notice ---- */
+.privacy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: rgba(79, 140, 255, 0.08);
+  border-bottom: 1px solid rgba(79, 140, 255, 0.25);
+  color: #c8d6f5;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.privacy-icon {
+  font-size: 16px;
+}
+.privacy-text {
+  flex: 1;
+}
+.privacy .btn {
+  white-space: nowrap;
+}
+
 /* ---- main / table ---- */
 main {
   flex: 1;
@@ -293,6 +315,20 @@ tr.active-row:hover {
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 600;
+}
+.logs-head-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.credit {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+.credit:hover {
+  color: var(--accent);
 }
 .log {
   flex: 1;

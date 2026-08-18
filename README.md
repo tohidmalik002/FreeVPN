@@ -5,6 +5,8 @@ relay servers worldwide and connects to them with one click, using **OpenVPN** u
 
 Built with **Electron + TypeScript**. No accounts, no tracking, no bundled ads.
 
+Made by [**@tohidmalik002**](https://github.com/tohidmalik002) · License: GPL-2.0 · Platform: Windows 10/11
+
 ---
 
 ## Table of contents
@@ -15,11 +17,13 @@ Built with **Electron + TypeScript**. No accounts, no tracking, no bundled ads.
 - [Privacy warning](#-privacy-warning)
 - [Prerequisites](#prerequisites)
 - [Run from source](#run-from-source)
+- [Development](#development)
 - [Build a Windows installer](#build-a-windows-installer)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
+- [Author](#author)
 - [License](#license)
 
 ---
@@ -94,6 +98,57 @@ Because the VPN adapter needs admin rights, do **one** of:
   and launches the app; **or**
 - launch an **Administrator** terminal and run `npm start`; **or**
 - click **"Relaunch as admin"** in the app when it warns you.
+
+### Helper launchers
+
+| File | Purpose |
+|---|---|
+| `Run FreeVPN (Admin).cmd` | Self-elevates (UAC) and starts the app. |
+| `Disconnect VPN (Admin).cmd` | Emergency kill-switch — force-stops the `openvpn.exe` tunnel. Handy if the tray/app is unresponsive. Only affects FreeVPN's tunnel, never OpenVPN Connect. |
+
+### Closing vs. minimizing
+
+- **✕ (close)** disconnects the VPN and quits.
+- **Minimize** hides the app to the system tray with the tunnel still up; the tray icon shows
+  the state and its right-click menu has **Disconnect** / **Quit**.
+
+## Development
+
+Clone and install:
+
+```bash
+git clone https://github.com/tohidmalik002/FreeVPN.git
+cd FreeVPN
+npm install
+```
+
+### npm scripts
+
+| Script | What it does |
+|---|---|
+| `npm run build` | Compiles both TypeScript projects and copies HTML/CSS into `dist/`. |
+| `npm start` / `npm run dev` | `build`, then launches Electron. |
+| `npm run icon` | Regenerates `build/icon.{png,ico}` from `src/main/icon.ts`. |
+| `npm run dist:win` | `build` + `icon` + `electron-builder --win` → NSIS installer in `release/`. |
+| `npm run clean` | Deletes `dist/`. |
+
+### Build layout
+
+There are **two** TypeScript configs on purpose:
+
+- `tsconfig.json` → **main + preload**, emitted as **CommonJS** (Electron's Node side).
+- `tsconfig.renderer.json` → **renderer**, emitted as **ES modules** for the browser context.
+
+The renderer is deliberately isolated (`rootDir: src/renderer`) and can't import from
+`src/shared`, so it keeps a local type mirror in `src/renderer/global.d.ts`. Static assets
+(`index.html`, `styles.css`) are copied by `scripts/copy-assets.js`.
+
+### Requirements
+
+- **Node.js 18+** and npm.
+- **Windows 10/11** (the app spawns `openvpn.exe` and uses Windows-only elevation).
+- For actually connecting: **OpenVPN Community** installed (see [Prerequisites](#prerequisites)),
+  and the app running **as administrator**.
 
 ## Build a Windows installer
 
@@ -179,6 +234,13 @@ FreeVPN/
 - Favourites + auto-reconnect on drop.
 - "Connect fastest" from the tray menu (needs the server list in the main process).
 - Per-country quick filters and a speed-test on connect.
+
+## Author
+
+Made by [**@tohidmalik002**](https://github.com/tohidmalik002).
+
+Issues and pull requests welcome at
+[github.com/tohidmalik002/FreeVPN](https://github.com/tohidmalik002/FreeVPN).
 
 ## License
 
