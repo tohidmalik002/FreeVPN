@@ -155,16 +155,21 @@ export class OpenVpnManager extends EventEmitter {
     });
 
     proc.on('close', (code) => {
-      const wasConnected = this.status.phase === 'connected';
-      if (this.status.phase !== 'disconnecting') {
-        this.setStatus({
-          phase: wasConnected ? 'disconnected' : 'error',
-          message: wasConnected
-            ? 'Connection closed'
-            : `openvpn exited (code ${code ?? 'null'})`,
-        });
-      } else {
+      // A failure was often already reported by handleLine (e.g. AUTH_FAILED);
+      // don't emit a second 'error' for the same attempt.
+      if (this.status.phase === 'error') {
+        this.cleanup();
+        return;
+      }
+      if (this.status.phase === 'disconnecting') {
         this.setStatus({ phase: 'disconnected' });
+      } else if (this.status.phase === 'connected') {
+        this.setStatus({ phase: 'disconnected', message: 'Connection closed' });
+      } else {
+        this.setStatus({
+          phase: 'error',
+          message: `openvpn exited (code ${code ?? 'null'})`,
+        });
       }
       this.cleanup();
     });

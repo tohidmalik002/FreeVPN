@@ -262,6 +262,7 @@ function updateFastestBtn(): void {
 // ranked list until one actually connects.
 let failoverQueue: VpnServer[] = [];
 let failoverActive = false;
+let failoverAwaiting = false; // waiting on the current attempt's result
 const FAILOVER_TRIES = 6;
 
 async function connectFastest(): Promise<void> {
@@ -285,6 +286,7 @@ function connectNextCandidate(): void {
     appendLog('⚡ All candidates failed. Hit ↻ Refresh for a fresh server list and retry.');
     return;
   }
+  failoverAwaiting = true;
   appendLog(
     `→ trying ${flag(next.countryShort)} ${next.countryLong} · ${next.hostName} ` +
       `(${next.speedMbps} Mbps, ${next.ping || '?'} ms)`,
@@ -297,8 +299,12 @@ function handleFailover(s: VpnStatus): void {
   if (!failoverActive) return;
   if (s.phase === 'connected') {
     failoverActive = false;
+    failoverAwaiting = false;
   } else if (s.phase === 'error') {
-    setTimeout(connectNextCandidate, 300);
+    // Ignore duplicate error events for the same attempt.
+    if (!failoverAwaiting) return;
+    failoverAwaiting = false;
+    setTimeout(connectNextCandidate, 400);
   }
 }
 
