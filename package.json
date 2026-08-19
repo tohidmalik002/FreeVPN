@@ -1,6 +1,6 @@
 {
   "name": "freevpn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FreeVPN — a Windows desktop client for the free public VPN Gate network, driving OpenVPN Community under the hood.",
   "main": "dist/main/main.js",
   "author": "tohidmalik002 (https://github.com/tohidmalik002)",
