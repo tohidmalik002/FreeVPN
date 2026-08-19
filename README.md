@@ -20,6 +20,7 @@ Made by [**@tohidmalik002**](https://github.com/tohidmalik002) · License: GPL-2
 - [Development](#development)
 - [Build a Windows installer](#build-a-windows-installer)
 - [How it works](#how-it-works)
+- [Per-app VPN (split tunnel)](#per-app-vpn-split-tunnel)
 - [Project structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
@@ -44,8 +45,10 @@ Connect's profiles.
 | Feature | Description |
 |---|---|
 | **Live server list** | Country + flag, ping, speed, active sessions, protocol. Sorted best-first, filterable by country. |
-| **⚡ Fastest** | One click auto-picks the best relay (ranked by `speed ÷ √ping`) and connects. |
+| **⚡ Fastest** | One click auto-picks the best relay (ranked by `speed ÷ √ping`) and **auto-fails-over** through dead servers until one connects. |
 | **One-click connect** | Decodes the server's `.ovpn` and drives `openvpn.exe`, watching for `Initialization Sequence Completed`. |
+| **Per-app VPN (split tunnel)** | Route only the apps you pick through the VPN; everything else stays on your normal internet. See [Per-app VPN](#per-app-vpn-split-tunnel). |
+| **Kill-on-exit** | The tunnel is tied to the app via a Windows Job Object — if FreeVPN is killed for any reason, `openvpn.exe` dies too (no orphaned tunnel). |
 | **System tray** | A shield icon that changes colour with the connection state (grey → amber → green → red). Close = minimize to tray. |
 | **Live connection log** | Raw OpenVPN output streamed into a panel at the bottom. |
 | **Admin-aware** | Detects missing OpenVPN / missing admin rights and shows in-app fix buttons. |
@@ -228,29 +231,81 @@ The renderer talks to the privileged main process only through a locked-down
 `contextBridge` API (`window.api`) — `contextIsolation` on, `nodeIntegration` off, and a
 strict CSP in `index.html`.
 
+## Per-app VPN (split tunnel)
+
+By default, connecting puts your **entire device** on the VPN. With **"VPN for chosen apps
+only"** you instead route just the apps you pick (e.g. a browser) through the VPN, while
+everything else keeps your normal internet.
+
+**How it's built** (Windows has no per-app VPN API, so this is two halves):
+
+```
+Chosen app ──(ProxiFyre: capture by exe name)──► local SOCKS5 proxy ──(host route via tunnel gateway)──► OpenVPN tunnel
+Everything else ─────────────────────────────────────────────────────────────────────────────────────► direct internet
+```
+
+- The VPN connects in **split mode** (the pushed `redirect-gateway` is filtered, so the tunnel
+  isn't your default route). `src/main/openvpn.ts`
+- FreeVPN runs an in-process **SOCKS5 proxy** that egresses through the tunnel adapter (per-
+  destination host route via the tunnel gateway). `src/main/splitProxy.ts`
+- **[ProxiFyre](https://github.com/wiresock/proxifyre)** (on the signed Windows Packet Filter
+  driver) forces the chosen executables' TCP into that proxy. `src/main/proxifyre.ts`
+
+### One-time setup
+
+Per-app mode needs ProxiFyre + its driver (not bundled — a driver install is your choice).
+Easiest: in the app, tick **VPN for chosen apps only** and click **Run automatic setup**
+(or run `Setup per-app VPN (Admin).cmd`). It installs ProxiFyre into `vendor/proxifyre/` and
+the Windows Packet Filter driver. When done, the app shows **"✓ Per-app routing engine ready."**
+
+### Using it
+
+1. Tick **VPN for chosen apps only**, click **Choose apps**, pick apps (or add an `.exe`), Save.
+2. Connect (Fastest or a specific server).
+3. The chosen apps now exit via the VPN; the log shows `[split] per-app routing active for: …`
+   and `[split] → host:port … via tunnel` per connection.
+
+### Limitations
+
+- **TCP only.** UDP/QUIC (HTTP/3) isn't captured yet, so a browser using QUIC can bypass the
+  tunnel. Fix per app: disable QUIC (e.g. Edge `edge://flags` → *Experimental QUIC protocol* →
+  Disabled), or wait for UDP support.
+- **Connection reuse.** An app with warm/pooled connections (or running in the background, like
+  Edge does by default) may keep using pre-capture connections — fully quit and reopen it, or
+  test in a private/incognito window (a clean connection pool).
+- Matching is by **executable name**, so all processes of that exe are routed.
+- Requires **administrator** (routes) and the ProxiFyre driver.
+
 ## Project structure
 
 ```
 FreeVPN/
 ├─ src/
 │  ├─ main/                 # Electron main process (Node, privileged)
-│  │  ├─ main.ts            # window, tray, IPC, admin relaunch, lifecycle
+│  │  ├─ main.ts            # window, tray, IPC, admin relaunch, lifecycle, split orchestration
 │  │  ├─ vpngate.ts         # fetch + parse the VPN Gate CSV API
-│  │  ├─ openvpn.ts         # locate/spawn openvpn.exe, parse status
+│  │  ├─ openvpn.ts         # locate/spawn openvpn.exe, parse status, split mode
+│  │  ├─ splitProxy.ts      # in-process SOCKS5 proxy that egresses via the tunnel
+│  │  ├─ proxifyre.ts       # locate/run ProxiFyre (per-app capture)
+│  │  ├─ apps.ts            # list running apps + persist the chosen selection
+│  │  ├─ jobguard.ts        # Windows Job Object — kill the tunnel if the app dies
 │  │  └─ icon.ts            # dependency-free shield PNG/ICO generator
 │  ├─ preload/
 │  │  └─ preload.ts         # secure window.api bridge (contextBridge)
 │  ├─ renderer/             # UI (sandboxed browser context)
 │  │  ├─ index.html
 │  │  ├─ styles.css
-│  │  ├─ renderer.ts        # table, status, fastest-pick, logs
+│  │  ├─ renderer.ts        # table, status, fastest-pick + failover, app picker, logs
 │  │  └─ global.d.ts        # renderer-local types + window.api typing
 │  └─ shared/
 │     └─ types.ts           # types shared by main + preload
 ├─ scripts/
 │  ├─ copy-assets.js        # copies html/css into dist/
-│  └─ gen-icon.js           # writes build/icon.{png,ico}
-├─ Run FreeVPN (Admin).cmd  # self-elevating dev launcher
+│  ├─ gen-icon.js           # writes build/icon.{png,ico}
+│  └─ setup-perapp.ps1      # installs ProxiFyre + the packet-filter driver
+├─ Run FreeVPN (Admin).cmd       # self-elevating dev launcher
+├─ Disconnect VPN (Admin).cmd    # emergency tunnel kill-switch
+├─ Setup per-app VPN (Admin).cmd # one-click per-app setup
 ├─ tsconfig.json            # main + preload build (CommonJS)
 ├─ tsconfig.renderer.json   # renderer build (ES modules)
 └─ package.json             # scripts + electron-builder config
@@ -268,9 +323,11 @@ FreeVPN/
 
 ## Roadmap
 
+- **UDP/QUIC support** for per-app mode (currently TCP-only) so browsers don't bypass via HTTP/3.
 - Bundle a portable `openvpn.exe` + `wintun.dll` in `vendor/openvpn/` → zero external install.
+- Bundle ProxiFyre so per-app mode needs no separate download.
 - Favourites + auto-reconnect on drop.
-- "Connect fastest" from the tray menu (needs the server list in the main process).
+- Per-app **kill-switch** (block a chosen app if the tunnel drops).
 - Per-country quick filters and a speed-test on connect.
 
 ## Author

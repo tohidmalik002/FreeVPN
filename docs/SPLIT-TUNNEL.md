@@ -63,7 +63,11 @@ Staging it this way means Stage 0 can be proven with just a browser — **no dri
 
 ---
 
-## Stage 1 — capture any app by PID (built)
+> **Status: VERIFIED WORKING (2026-08-19).** With Edge chosen and the VPN connected in split
+> mode, a clean (incognito) Edge session exits via the VPN country while the rest of the system
+> stays on the normal connection. TCP only for now — QUIC/UDP can still bypass (see Limitations).
+
+## Stage 1 — capture any app by PID (built + verified)
 
 - **1a — app picker (done):** tick apps / add by file; saved to `userData/selected-apps.json`
   (`src/main/apps.ts`, picker modal in the renderer).
