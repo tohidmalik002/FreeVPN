@@ -1,4 +1,4 @@
-import type { EnvInfo, VpnServer, VpnStatus } from './global';
+import type { AppEntry, EnvInfo, VpnServer, VpnStatus } from './global';
 
 const api = window.api;
 
@@ -19,6 +19,8 @@ const clearLogBtn = $('clearLog');
 const creditLink = $('credit');
 const privacyNotice = $('privacyNotice');
 const privacyAck = $<HTMLButtonElement>('privacyAck');
+const splitToggle = $<HTMLInputElement>('splitTunnel');
+const splitHint = $('splitHint');
 
 let allServers: VpnServer[] = [];
 let currentStatus: VpnStatus = { phase: 'disconnected' };
@@ -52,6 +54,38 @@ async function refreshEnv(): Promise<void> {
   banner.className = 'banner';
   banner.innerHTML = '';
 
+  // Per-app routing engine readiness (shown in the chosen-apps hint).
+  const engineStatus = document.getElementById('engineStatus');
+  if (engineStatus) {
+    if (env.proxifyre.found) {
+      engineStatus.className = 'engine-status engine-ok';
+      engineStatus.innerHTML = '✓ Per-app routing engine ready.';
+    } else {
+      engineStatus.className = 'engine-status engine-missing';
+      engineStatus.innerHTML =
+        '⚠️ Per-app routing needs a one-time setup (ProxiFyre + driver). Without it, chosen ' +
+        'apps stay on your normal internet.' +
+        '<div class="engine-actions">' +
+        '<button id="runSetup" class="btn btn-sm btn-primary">Run automatic setup</button>' +
+        '<a id="getProxifyre">Set up manually</a>' +
+        '</div>';
+      const setupBtn = document.getElementById('runSetup') as HTMLButtonElement | null;
+      if (setupBtn) {
+        setupBtn.onclick = () => {
+          api.runSetup();
+          appendLog(
+            '\n[setup] Launched the automatic setup in a new window. Follow its prompts, ' +
+              'then click ↻ Refresh here when it finishes.',
+          );
+        };
+      }
+      const link = document.getElementById('getProxifyre');
+      if (link)
+        link.onclick = () =>
+          api.openExternal('https://github.com/wiresock/proxifyre#readme');
+    }
+  }
+
   if (!env.openvpn.found) {
     banner.classList.add('error');
     banner.innerHTML =
@@ -83,6 +117,7 @@ async function refreshEnv(): Promise<void> {
 function renderStatus(s: VpnStatus): void {
   currentStatus = s;
   connectingHost = s.phase === 'connecting' ? s.server?.hostName ?? null : null;
+  handleFailover(s);
 
   const dotClass =
     s.phase === 'connected'
@@ -175,18 +210,28 @@ function renderRows(): void {
   serverBody.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((b) => {
     const act = b.dataset.act;
     if (act === 'disconnect') {
-      b.onclick = () => api.disconnect();
+      b.onclick = () => {
+        failoverActive = false;
+        api.disconnect();
+      };
     } else if (act === 'connect') {
       const idx = Number(b.dataset.i);
-      b.onclick = () => connectTo(rows[idx]);
+      b.onclick = () => {
+        failoverActive = false; // manual pick cancels any Quick Connect in progress
+        connectTo(rows[idx]);
+      };
     }
   });
 }
 
 async function connectTo(server: VpnServer): Promise<void> {
   try {
-    appendLog(`\n=== Connecting to ${server.hostName} (${server.countryLong}) ===`);
-    await api.connect(server);
+    const splitTunnel = splitToggle.checked;
+    appendLog(
+      `\n=== Connecting to ${server.hostName} (${server.countryLong})` +
+        `${splitTunnel ? ' [VPN for chosen apps only]' : ''} ===`,
+    );
+    await api.connect(server, { splitTunnel });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     appendLog(`ERROR: ${msg}`);
@@ -194,19 +239,15 @@ async function connectTo(server: VpnServer): Promise<void> {
   }
 }
 
-/**
- * Pick the "fastest" server: prefer responsive relays (ping > 0), rank by a
- * simple speed-per-ping score, and require enough spare capacity.
- */
-function pickFastest(): VpnServer | null {
+/** Rank servers best-first by a simple speed-per-ping score. */
+function rankedCandidates(): VpnServer[] {
   const candidates = allServers.filter((s) => s.speedMbps > 0);
-  if (candidates.length === 0) return allServers[0] ?? null;
-  const scored = candidates.map((s) => {
+  const scored = (candidates.length ? candidates : allServers).map((s) => {
     const ping = s.ping > 0 ? s.ping : 200; // treat unknown ping as mediocre
     return { s, rank: s.speedMbps / Math.sqrt(ping) };
   });
   scored.sort((a, b) => b.rank - a.rank);
-  return scored[0].s;
+  return scored.map((x) => x.s);
 }
 
 /** The Fastest button is usable only when idle AND at least one server exists. */
@@ -217,17 +258,54 @@ function updateFastestBtn(): void {
   fastestBtn.disabled = busy || allServers.length === 0;
 }
 
+// Auto-failover: VPN Gate servers are often dead, so "Fastest" walks down the
+// ranked list until one actually connects.
+let failoverQueue: VpnServer[] = [];
+let failoverActive = false;
+let failoverAwaiting = false; // waiting on the current attempt's result
+const FAILOVER_TRIES = 6;
+
 async function connectFastest(): Promise<void> {
-  const best = pickFastest();
-  if (!best) {
+  const ranked = rankedCandidates();
+  if (ranked.length === 0) {
     appendLog('No servers available to connect.');
     return;
   }
+  failoverQueue = ranked.slice(0, FAILOVER_TRIES);
+  failoverActive = true;
   appendLog(
-    `\n⚡ Auto-picked fastest: ${best.countryLong} · ${best.hostName} ` +
-      `(${best.speedMbps} Mbps, ${best.ping || '?'} ms)`,
+    `\n⚡ Quick Connect — trying up to ${failoverQueue.length} fastest servers until one works…`,
   );
-  await connectTo(best);
+  connectNextCandidate();
+}
+
+function connectNextCandidate(): void {
+  const next = failoverQueue.shift();
+  if (!next) {
+    failoverActive = false;
+    appendLog('⚡ All candidates failed. Hit ↻ Refresh for a fresh server list and retry.');
+    return;
+  }
+  failoverAwaiting = true;
+  appendLog(
+    `→ trying ${flag(next.countryShort)} ${next.countryLong} · ${next.hostName} ` +
+      `(${next.speedMbps} Mbps, ${next.ping || '?'} ms)`,
+  );
+  connectTo(next);
+}
+
+/** During a Quick Connect, advance to the next server when one fails. */
+function handleFailover(s: VpnStatus): void {
+  if (!failoverActive) return;
+  if (s.phase === 'connected') {
+    failoverActive = false;
+    failoverAwaiting = false;
+  } else if (s.phase === 'error') {
+    // Ignore duplicate error events for the same attempt.
+    if (!failoverAwaiting) return;
+    failoverAwaiting = false;
+    setTimeout(connectNextCandidate, 400);
+  }
 }
 
 async function loadServers(): Promise<void> {
@@ -253,7 +331,10 @@ refreshBtn.onclick = () => {
   loadServers();
   refreshEnv();
 };
-disconnectBtn.onclick = () => api.disconnect();
+disconnectBtn.onclick = () => {
+  failoverActive = false;
+  api.disconnect();
+};
 fastestBtn.onclick = () => connectFastest();
 searchInput.oninput = () => renderRows();
 clearLogBtn.onclick = () => {
@@ -262,6 +343,134 @@ clearLogBtn.onclick = () => {
 creditLink.onclick = (e) => {
   e.preventDefault();
   api.openExternal('https://github.com/tohidmalik002');
+};
+
+// Plain-language hint when "VPN for chosen apps only" is enabled.
+splitToggle.onchange = () => {
+  splitHint.classList.toggle('hidden', !splitToggle.checked);
+  if (splitToggle.checked) updateAppsSummary();
+};
+
+// ---- app picker ----
+const chooseAppsBtn = $<HTMLButtonElement>('chooseAppsBtn');
+const appsSummary = $('appsSummary');
+const appModal = $('appModal');
+const appModalClose = $('appModalClose');
+const appCancel = $<HTMLButtonElement>('appCancel');
+const appSave = $<HTMLButtonElement>('appSave');
+const appSearch = $<HTMLInputElement>('appSearch');
+const addByFile = $<HTMLButtonElement>('addByFile');
+const appList = $('appList');
+const appCount = $('appCount');
+
+let knownApps: AppEntry[] = []; // running ∪ selected
+const runningExes = new Set<string>();
+const workingSel = new Map<string, AppEntry>(); // exe -> entry
+
+async function updateAppsSummary(): Promise<void> {
+  const selected = await api.getSelectedApps();
+  if (selected.length === 0) {
+    appsSummary.textContent = 'No apps chosen yet';
+  } else {
+    const names = selected.map((a) => a.name || a.exe);
+    appsSummary.textContent =
+      `${selected.length} app${selected.length === 1 ? '' : 's'}: ` +
+      names.slice(0, 3).join(', ') +
+      (names.length > 3 ? `, +${names.length - 3} more` : '');
+  }
+}
+
+async function openAppModal(): Promise<void> {
+  appModal.classList.remove('hidden');
+  appList.innerHTML = '<div class="app-empty">Loading running apps…</div>';
+  const [running, selected] = await Promise.all([
+    api.listApps(),
+    api.getSelectedApps(),
+  ]);
+  runningExes.clear();
+  running.forEach((a) => runningExes.add(a.exe));
+
+  workingSel.clear();
+  selected.forEach((a) => workingSel.set(a.exe, a));
+
+  // merge: running first, then any selected apps that aren't currently running
+  const byExe = new Map<string, AppEntry>();
+  running.forEach((a) => byExe.set(a.exe, a));
+  selected.forEach((a) => {
+    if (!byExe.has(a.exe)) byExe.set(a.exe, a);
+  });
+  knownApps = Array.from(byExe.values()).sort((a, b) =>
+    (a.name || a.exe).localeCompare(b.name || b.exe),
+  );
+
+  appSearch.value = '';
+  renderApps();
+}
+
+function renderApps(): void {
+  const q = appSearch.value.trim().toLowerCase();
+  const rows = knownApps.filter(
+    (a) =>
+      !q || a.name.toLowerCase().includes(q) || a.exe.toLowerCase().includes(q),
+  );
+  if (rows.length === 0) {
+    appList.innerHTML = '<div class="app-empty">No matching apps.</div>';
+  } else {
+    appList.innerHTML = rows
+      .map((a, i) => {
+        const checked = workingSel.has(a.exe) ? 'checked' : '';
+        const badge = runningExes.has(a.exe)
+          ? ''
+          : '<span class="not-running">not running</span>';
+        return `<label class="app-row">
+          <input type="checkbox" data-i="${i}" ${checked} />
+          <div><div class="app-name">${esc(a.name)}</div>
+          <div class="app-exe">${esc(a.exe)}</div></div>${badge}
+        </label>`;
+      })
+      .join('');
+    appList.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) => {
+      cb.onchange = () => {
+        const app = rows[Number(cb.dataset.i)];
+        if (cb.checked) workingSel.set(app.exe, app);
+        else workingSel.delete(app.exe);
+        updateModalCount();
+      };
+    });
+  }
+  updateModalCount();
+}
+
+function updateModalCount(): void {
+  const n = workingSel.size;
+  appCount.textContent = `${n} app${n === 1 ? '' : 's'} selected`;
+}
+
+function closeAppModal(): void {
+  appModal.classList.add('hidden');
+}
+
+chooseAppsBtn.onclick = () => openAppModal();
+appModalClose.onclick = () => closeAppModal();
+appCancel.onclick = () => closeAppModal();
+appModal.onclick = (e) => {
+  if (e.target === appModal) closeAppModal();
+};
+appSearch.oninput = () => renderApps();
+appSave.onclick = async () => {
+  await api.setSelectedApps(Array.from(workingSel.values()));
+  await updateAppsSummary();
+  closeAppModal();
+};
+addByFile.onclick = async () => {
+  const picked = await api.browseForApp();
+  if (!picked) return;
+  if (!knownApps.some((a) => a.exe === picked.exe)) {
+    knownApps.push(picked);
+    knownApps.sort((a, b) => (a.name || a.exe).localeCompare(b.name || b.exe));
+  }
+  workingSel.set(picked.exe, picked);
+  renderApps();
 };
 
 // Privacy notice — shown until the user acknowledges it (remembered locally).
@@ -280,4 +489,5 @@ api.onLog((line) => appendLog(line));
 // initial load
 refreshEnv();
 loadServers();
+updateAppsSummary();
 api.getStatus().then(renderStatus);

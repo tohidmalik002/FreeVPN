@@ -72,7 +72,11 @@ export class OpenVpnManager extends EventEmitter {
     this.emit('log', line);
   }
 
-  async connect(server: VpnServer, openvpnPath: string): Promise<void> {
+  async connect(
+    server: VpnServer,
+    openvpnPath: string,
+    opts: { splitTunnel?: boolean } = {},
+  ): Promise<void> {
     if (this.proc) {
       await this.disconnect();
     }
@@ -104,13 +108,22 @@ export class OpenVpnManager extends EventEmitter {
       '--data-ciphers-fallback',
       'AES-128-CBC',
       '--connect-timeout',
-      '15',
+      '12',
       '--connect-retry-max',
-      '2',
+      '1',
       '--pull-filter',
       'ignore',
       'block-outside-dns',
     ];
+
+    // Split-tunnel mode: don't let the server make the tunnel the default route.
+    // The tunnel adapter still comes up with an IP, so specific apps can be routed
+    // through it (see tools/split-proxy.js), while the rest of the system stays direct.
+    if (opts.splitTunnel) {
+      args.push('--pull-filter', 'ignore', 'redirect-gateway');
+      args.push('--pull-filter', 'ignore', 'redirect-gateway-ipv6');
+      this.log('[split] split-tunnel mode: tunnel will NOT be the default route');
+    }
 
     this.log(`$ openvpn --config server.ovpn  (${server.hostName})`);
     const proc = spawn(openvpnPath, args, {
@@ -142,16 +155,21 @@ export class OpenVpnManager extends EventEmitter {
     });
 
     proc.on('close', (code) => {
-      const wasConnected = this.status.phase === 'connected';
-      if (this.status.phase !== 'disconnecting') {
-        this.setStatus({
-          phase: wasConnected ? 'disconnected' : 'error',
-          message: wasConnected
-            ? 'Connection closed'
-            : `openvpn exited (code ${code ?? 'null'})`,
-        });
-      } else {
+      // A failure was often already reported by handleLine (e.g. AUTH_FAILED);
+      // don't emit a second 'error' for the same attempt.
+      if (this.status.phase === 'error') {
+        this.cleanup();
+        return;
+      }
+      if (this.status.phase === 'disconnecting') {
         this.setStatus({ phase: 'disconnected' });
+      } else if (this.status.phase === 'connected') {
+        this.setStatus({ phase: 'disconnected', message: 'Connection closed' });
+      } else {
+        this.setStatus({
+          phase: 'error',
+          message: `openvpn exited (code ${code ?? 'null'})`,
+        });
       }
       this.cleanup();
     });

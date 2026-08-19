@@ -49,7 +49,23 @@
     <main>
       <div class="toolbar">
         <input id="search" class="search" type="text" placeholder="Filter by country…" />
+        <label class="split-toggle" title="On: only apps you choose use the VPN — the rest of your device keeps its normal internet. Off: covers your entire device with the VPN.">
+          <input type="checkbox" id="splitTunnel" />
+          VPN for chosen apps only <span class="beta">beta</span>
+        </label>
         <div class="count" id="count">—</div>
+      </div>
+
+      <div id="splitHint" class="split-hint hidden">
+        <div>
+          ⚙️ <b>Not your entire device will use the VPN.</b> Only the apps you choose will —
+          the rest keep your normal internet. Turn this <b>off</b> to cover your entire device.
+        </div>
+        <div class="split-controls">
+          <button id="chooseAppsBtn" class="btn btn-sm btn-primary">Choose apps…</button>
+          <span id="appsSummary" class="apps-summary">No apps chosen yet</span>
+        </div>
+        <div id="engineStatus" class="engine-status"></div>
       </div>
 
       <div class="table-wrap">
@@ -84,6 +100,32 @@
       </div>
       <pre id="log" class="log"></pre>
     </section>
+
+    <div id="appModal" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-head">
+          <div>
+            <div class="modal-title">Choose apps for the VPN</div>
+            <div class="modal-sub">Only ticked apps use the VPN. Everything else stays on your normal internet.</div>
+          </div>
+          <button id="appModalClose" class="btn btn-ghost" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-toolbar">
+          <input id="appSearch" class="search" type="text" placeholder="Search apps…" />
+          <button id="addByFile" class="btn btn-sm">＋ Add by file</button>
+        </div>
+        <div id="appList" class="app-list">
+          <div class="app-empty">Loading running apps…</div>
+        </div>
+        <div class="modal-foot">
+          <span id="appCount" class="count">0 apps selected</span>
+          <div class="modal-foot-actions">
+            <button id="appCancel" class="btn btn-sm">Cancel</button>
+            <button id="appSave" class="btn btn-sm btn-primary">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="renderer.js"></script>
   </body>

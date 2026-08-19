@@ -38,6 +38,13 @@ export interface OpenVpnInfo {
 export interface EnvInfo {
   isAdmin: boolean;
   openvpn: OpenVpnInfo;
+  proxifyre: { found: boolean; path?: string };
+}
+
+export interface AppEntry {
+  name: string;
+  exe: string;
+  path?: string;
 }
 
 declare global {
@@ -45,11 +52,16 @@ declare global {
     api: {
       getEnv(): Promise<EnvInfo>;
       listServers(): Promise<VpnServer[]>;
-      connect(server: VpnServer): Promise<void>;
+      connect(server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void>;
       disconnect(): Promise<void>;
       getStatus(): Promise<VpnStatus>;
       relaunchAsAdmin(): Promise<void>;
+      runSetup(): Promise<void>;
       openExternal(url: string): Promise<void>;
+      listApps(): Promise<AppEntry[]>;
+      getSelectedApps(): Promise<AppEntry[]>;
+      setSelectedApps(apps: AppEntry[]): Promise<void>;
+      browseForApp(): Promise<AppEntry | null>;
       onStatus(cb: (s: VpnStatus) => void): void;
       onLog(cb: (line: string) => void): void;
     };
