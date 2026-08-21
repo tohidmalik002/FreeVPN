@@ -9,6 +9,13 @@
 // Implemented with koffi (a prebuilt FFI — no native compilation). If koffi or
 // kernel32 is unavailable for any reason, this degrades to a no-op and the
 // graceful-shutdown paths (before-quit) still tear the tunnel down.
+//
+// Linux has no equivalent here: openvpn runs as root there (via pkexec, see
+// openvpn.ts), so this unprivileged process cannot signal it by PID even if
+// it wanted to. Linux instead guards app-exit paths (before-quit, SIGINT,
+// SIGTERM — see main.ts) by asking openvpn to stop over its own management
+// interface, which needs no special privilege. guardChildProcess() stays a
+// no-op there.
 
 let guard: (pid: number) => boolean = () => false;
 

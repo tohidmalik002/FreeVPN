@@ -7,25 +7,33 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as net from 'net';
 import { EventEmitter } from 'events';
 import { guardChildProcess } from './jobguard';
 import { OpenVpnInfo, VpnServer, VpnStatus } from '../shared/types';
 
-const COMMUNITY_PATHS: Array<{ p: string; source: OpenVpnInfo['source'] }> = [
-  { p: 'C:\\Program Files\\OpenVPN\\bin\\openvpn.exe', source: 'community' },
-  {
-    p: 'C:\\Program Files (x86)\\OpenVPN\\bin\\openvpn.exe',
-    source: 'community-x86',
-  },
-];
+const COMMUNITY_PATHS: Array<{ p: string; source: OpenVpnInfo['source'] }> =
+  process.platform === 'linux'
+    ? [
+        { p: '/usr/sbin/openvpn', source: 'community' },
+        { p: '/usr/bin/openvpn', source: 'community' },
+      ]
+    : [
+        { p: 'C:\\Program Files\\OpenVPN\\bin\\openvpn.exe', source: 'community' },
+        {
+          p: 'C:\\Program Files (x86)\\OpenVPN\\bin\\openvpn.exe',
+          source: 'community-x86',
+        },
+      ];
 
 /**
- * Find an openvpn.exe. Priority:
+ * Find an openvpn binary. Priority:
  *   1. a copy bundled with the app under vendor/openvpn/ (makes it standalone)
- *   2. an installed OpenVPN Community edition
+ *   2. an installed OpenVPN Community edition (apt package `openvpn` on Linux)
  */
 export function locateOpenVpn(appRoot: string): OpenVpnInfo {
-  const bundled = path.join(appRoot, 'vendor', 'openvpn', 'openvpn.exe');
+  const bundledName = process.platform === 'linux' ? 'openvpn' : 'openvpn.exe';
+  const bundled = path.join(appRoot, 'vendor', 'openvpn', bundledName);
   if (fs.existsSync(bundled)) {
     return { found: true, path: bundled, source: 'bundled' };
   }
@@ -35,13 +43,50 @@ export function locateOpenVpn(appRoot: string): OpenVpnInfo {
   return { found: false };
 }
 
-/** True if the current process is running elevated (has admin rights). */
+/**
+ * True if the current process is running elevated (has admin rights).
+ *
+ * On Linux we deliberately never run the whole app as root (see connect()) —
+ * elevation is scoped to just the openvpn child via pkexec — so this always
+ * reports true and the UI never nags the user to relaunch elevated.
+ */
 export function isAdmin(): Promise<boolean> {
+  if (process.platform === 'linux') return Promise.resolve(true);
   return new Promise((resolve) => {
     // `net session` requires administrator rights; it errors otherwise.
     execFile('net', ['session'], { windowsHide: true }, (err) => {
       resolve(!err);
     });
+  });
+}
+
+/** Ask the OS for a free TCP port by binding to port 0 and reading it back. */
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Send a command to openvpn's management interface (loopback TCP) and close.
+ * Used on Linux instead of proc.kill() because openvpn runs as root there
+ * (via pkexec) and this unprivileged process cannot signal it directly.
+ */
+function sendManagementCommand(port: number, command: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const sock = net.connect(port, '127.0.0.1', () => {
+      sock.write(command + '\n');
+      sock.end();
+    });
+    sock.setTimeout(3000, () => sock.destroy(new Error('management command timed out')));
+    sock.once('close', () => resolve());
+    sock.once('error', reject);
   });
 }
 
@@ -58,6 +103,7 @@ export class OpenVpnManager extends EventEmitter {
   private configPath: string | null = null;
   private current: VpnServer | null = null;
   private status: VpnStatus = { phase: 'disconnected' };
+  private mgmtPort: number | null = null; // Linux only — see sendManagementCommand
 
   getStatus(): VpnStatus {
     return this.status;
@@ -125,11 +171,24 @@ export class OpenVpnManager extends EventEmitter {
       this.log('[split] split-tunnel mode: tunnel will NOT be the default route');
     }
 
-    this.log(`$ openvpn --config server.ovpn  (${server.hostName})`);
-    const proc = spawn(openvpnPath, args, {
-      cwd: path.dirname(openvpnPath), // so wintun.dll next to openvpn.exe is found
-      windowsHide: true,
-    });
+    let proc: ChildProcessWithoutNullStreams;
+    if (process.platform === 'linux') {
+      // openvpn needs root to create the tun device and set routes. We never
+      // run the whole app as root — pkexec elevates just this one child and
+      // shows the desktop's own polkit auth dialog.
+      this.mgmtPort = await getFreePort();
+      args.push('--management', '127.0.0.1', String(this.mgmtPort));
+      this.log(`$ pkexec openvpn --config server.ovpn  (${server.hostName})`);
+      proc = spawn('pkexec', [openvpnPath, ...args], {
+        cwd: path.dirname(openvpnPath),
+      });
+    } else {
+      this.log(`$ openvpn --config server.ovpn  (${server.hostName})`);
+      proc = spawn(openvpnPath, args, {
+        cwd: path.dirname(openvpnPath), // so wintun.dll next to openvpn.exe is found
+        windowsHide: true,
+      });
+    }
     this.proc = proc;
 
     // Tie the tunnel's lifetime to the app: if the app dies for ANY reason
@@ -165,6 +224,13 @@ export class OpenVpnManager extends EventEmitter {
         this.setStatus({ phase: 'disconnected' });
       } else if (this.status.phase === 'connected') {
         this.setStatus({ phase: 'disconnected', message: 'Connection closed' });
+      } else if (process.platform === 'linux' && code === 126) {
+        this.setStatus({ phase: 'error', message: 'Authorization was cancelled' });
+      } else if (process.platform === 'linux' && code === 127) {
+        this.setStatus({
+          phase: 'error',
+          message: 'Not authorized to run openvpn as root (pkexec denied it)',
+        });
       } else {
         this.setStatus({
           phase: 'error',
@@ -205,6 +271,13 @@ export class OpenVpnManager extends EventEmitter {
       });
       return;
     }
+    if (/Cannot open TUN\/TAP dev|Cannot allocate TUN\/TAP/i.test(line)) {
+      this.setStatus({
+        phase: 'error',
+        message: 'Could not open /dev/net/tun — is the "tun" kernel module loaded?',
+      });
+      return;
+    }
     if (/Note: cannot open .* for reading|WARNING: cannot stat/i.test(line)) {
       // non-fatal
     }
@@ -217,14 +290,26 @@ export class OpenVpnManager extends EventEmitter {
     }
     this.setStatus({ phase: 'disconnecting' });
     const proc = this.proc;
+    if (process.platform === 'linux' && this.mgmtPort) {
+      // openvpn runs as root (pkexec); this process cannot signal it directly,
+      // so ask it to shut down over its own management interface instead.
+      await sendManagementCommand(this.mgmtPort, 'signal SIGTERM').catch(() => undefined);
+    }
     return new Promise((resolve) => {
       const done = () => resolve();
       proc.once('close', done);
-      // SIGTERM lets openvpn tear the adapter/routes down cleanly.
-      proc.kill('SIGTERM');
+      if (process.platform !== 'linux') {
+        // SIGTERM lets openvpn tear the adapter/routes down cleanly.
+        proc.kill('SIGTERM');
+      }
       // Hard stop if it ignores us.
       setTimeout(() => {
-        if (this.proc === proc) {
+        if (this.proc !== proc) return;
+        if (process.platform === 'linux') {
+          // Last resort — the management channel should normally handle this.
+          // Re-elevates (a second auth prompt), so only used on a stuck tunnel.
+          execFile('pkexec', ['kill', '-TERM', String(proc.pid)], () => undefined);
+        } else {
           try {
             proc.kill('SIGKILL');
           } catch {
@@ -238,6 +323,7 @@ export class OpenVpnManager extends EventEmitter {
   private cleanup(): void {
     this.proc = null;
     this.current = null;
+    this.mgmtPort = null;
     if (this.configPath) {
       try {
         fs.rmSync(path.dirname(this.configPath), { recursive: true, force: true });

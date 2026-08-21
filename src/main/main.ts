@@ -175,8 +175,12 @@ function updateTray(s: VpnStatus): void {
   tray.setContextMenu(buildTrayMenu());
 }
 
-/** Relaunch the app elevated (UAC prompt), then quit the current instance. */
+/**
+ * Relaunch the app elevated (UAC prompt), then quit the current instance.
+ * Windows only — Linux never runs the whole app as root; see openvpn.ts.
+ */
 function relaunchAsAdmin(): void {
+  if (process.platform !== 'win32') return;
   const exe = process.execPath; // electron.exe (dev) or FreeVPN.exe (packaged)
   const args = app.isPackaged ? [] : process.argv.slice(1); // pass the app dir in dev
   const argList = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(',');
@@ -211,7 +215,9 @@ function registerIpc(): void {
       const info = locateOpenVpn(APP_ROOT);
       if (!info.found || !info.path) {
         throw new Error(
-          'openvpn.exe not found. Install OpenVPN Community from openvpn.net/community.',
+          process.platform === 'linux'
+            ? 'openvpn not found. Install it with: sudo apt install openvpn'
+            : 'openvpn.exe not found. Install OpenVPN Community from openvpn.net/community.',
         );
       }
       // Remember whether this connection wants per-app routing (and for which apps).
@@ -324,3 +330,20 @@ app.on('before-quit', async () => {
   await stopSplitRouting().catch(() => undefined);
   await vpn.disconnect().catch(() => undefined);
 });
+
+// On Linux, openvpn runs as root (pkexec) and can't be killed by this
+// unprivileged process, so there's no OS-level guarantee it dies with us the
+// way Windows' Job Object provides (see jobguard.ts). Catch every path that
+// terminates the app ourselves and tear the tunnel down over its management
+// interface before exiting — this covers quit, Ctrl+C, and `kill` from a
+// terminal/systemd, though not an uncatchable `kill -9` of this process.
+if (process.platform === 'linux') {
+  const shutdown = async () => {
+    isQuitting = true;
+    await stopSplitRouting().catch(() => undefined);
+    await vpn.disconnect().catch(() => undefined);
+    app.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
+}
