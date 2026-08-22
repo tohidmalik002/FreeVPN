@@ -90,6 +90,35 @@ function sendManagementCommand(port: number, command: string): Promise<void> {
   });
 }
 
+/** Sleep helper for the retry loop below. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry sendManagementCommand for a bit before giving up.
+ *
+ * Right after connect() spawns openvpn, its management listener may not be
+ * up yet (it opens after openvpn parses args, which takes a moment). Calling
+ * disconnect() in that window — e.g. Fastest failover moving on from a
+ * server that's failing fast — used to hit ECONNREFUSED once and fall
+ * straight through to the pkexec-kill fallback, which re-prompts for a
+ * password. Retrying for ~2s covers that window so the common case doesn't
+ * need a second elevation at all.
+ */
+async function sendManagementCommandWithRetry(port: number, command: string): Promise<void> {
+  const attempts = 10;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await sendManagementCommand(port, command);
+      return;
+    } catch (err) {
+      if (i === attempts - 1) throw err;
+      await delay(200);
+    }
+  }
+}
+
 /**
  * Manages a single OpenVPN connection: writes the .ovpn to a temp file, spawns
  * openvpn.exe, and translates its stdout into VpnStatus updates.
@@ -304,7 +333,12 @@ export class OpenVpnManager extends EventEmitter {
     if (process.platform === 'linux' && this.mgmtPort) {
       // openvpn runs as root (pkexec); this process cannot signal it directly,
       // so ask it to shut down over its own management interface instead.
-      await sendManagementCommand(this.mgmtPort, 'signal SIGTERM').catch(() => undefined);
+      // Retried because disconnect() can land moments after connect(), before
+      // openvpn's management listener has opened (e.g. Fastest failover
+      // abandoning a server that's already failing) — a single failed attempt
+      // used to fall straight through to the pkexec-kill fallback below,
+      // which re-prompts for a password.
+      await sendManagementCommandWithRetry(this.mgmtPort, 'signal SIGTERM').catch(() => undefined);
     }
     return new Promise((resolve) => {
       const done = () => resolve();

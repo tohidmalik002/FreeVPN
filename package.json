@@ -60,7 +60,9 @@
       ],
       "icon": "build/icon.png",
       "category": "Network",
-      "executableName": "freevpn"
+      "executableName": "freevpn",
+      "afterInstall": "build/linux/after-install.sh",
+      "afterRemove": "build/linux/after-remove.sh"
     },
     "deb": {
       "depends": [
