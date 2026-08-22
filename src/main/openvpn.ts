@@ -104,9 +104,15 @@ export class OpenVpnManager extends EventEmitter {
   private current: VpnServer | null = null;
   private status: VpnStatus = { phase: 'disconnected' };
   private mgmtPort: number | null = null; // Linux only — see sendManagementCommand
+  private tunDevice: string | null = null; // Linux only — e.g. "tun0", for split-tunnel routing
 
   getStatus(): VpnStatus {
     return this.status;
+  }
+
+  /** The kernel tun interface openvpn brought up (Linux only, once connected). */
+  getTunDevice(): string | null {
+    return this.tunDevice;
   }
 
   private setStatus(next: VpnStatus): void {
@@ -244,6 +250,11 @@ export class OpenVpnManager extends EventEmitter {
   private handleLine(line: string): void {
     this.log(line);
 
+    if (process.platform === 'linux' && !this.tunDevice) {
+      const m = line.match(/\b(tun\d+)\b/);
+      if (m) this.tunDevice = m[1];
+    }
+
     if (/Initialization Sequence Completed/i.test(line)) {
       const s = this.current;
       this.setStatus({
@@ -324,6 +335,7 @@ export class OpenVpnManager extends EventEmitter {
     this.proc = null;
     this.current = null;
     this.mgmtPort = null;
+    this.tunDevice = null;
     if (this.configPath) {
       try {
         fs.rmSync(path.dirname(this.configPath), { recursive: true, force: true });

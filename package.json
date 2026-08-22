@@ -65,7 +65,9 @@
     "deb": {
       "depends": [
         "openvpn",
-        "policykit-1"
+        "policykit-1",
+        "iproute2",
+        "iptables"
       ],
       "maintainer": "tohidmalik002 <noreply@users.noreply.github.com>"
     },

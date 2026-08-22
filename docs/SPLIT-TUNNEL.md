@@ -98,6 +98,54 @@ that, so nothing breaks.
 None of this runs unless you tick **VPN for chosen apps only** *and* have apps selected. With
 the toggle off (the default), the connect path is byte-for-byte the old whole-device VPN.
 
-### Still to do
+### Still to do (Windows)
 - UDP + DNS handling (Stage-0 TCP-only limits still apply); a kill-switch if the tunnel drops;
   bundling ProxiFyre to remove the manual install.
+
+---
+
+## Linux: network namespace instead of a packet-filter driver
+
+Windows has no per-app VPN API, but it does have ProxiFyre — a signed packet-filter driver
+that can transparently capture an *already-running* process's traffic by PID. Linux has no
+equivalent driver, and retrofitting network isolation onto a process that's already running
+needs heavy tooling (CRIU-style namespace migration) that isn't worth the complexity here.
+
+Instead, Linux uses the standard, well-supported primitive for this: a dedicated **network
+namespace** whose only route out is the VPN tunnel, and FreeVPN **launches** the chosen app
+inside it — see `src/main/linuxSplit.ts`. This is a real UX difference from Windows ("pick a
+running app" becomes "pick an app to launch through the VPN"), but it's the same technique
+Mullvad's own Linux split-tunneling uses, and it gets full TCP **and** UDP **and** DNS
+isolation for free — no SOCKS relay, so none of the Windows Stage-0 limits above apply.
+
+```
+Chosen app (launched by FreeVPN) ──┐
+                                    ├─ netns "freevpn0" ── veth ── policy route ── tun (VPN)
+                                    │   (only route out is the tunnel)
+Everything else ────────────────────────────────────────────────────────────────► direct internet
+```
+
+- `scripts/linux-split-up.sh` (root, via `pkexec` — never the whole app): creates the
+  namespace, a veth pair into it, a resolv.conf pointing at public DNS routed through the
+  tunnel (the namespace's loopback is isolated, so it can't reach the host's
+  `127.0.0.53` stub resolver), and a **policy route** (`ip rule` + a dedicated table) that
+  sends only that namespace's traffic through the tunnel — split mode intentionally doesn't
+  make the tunnel the host's default route, so without the policy route the namespace's
+  packets would just follow the host's normal route like everything else.
+- `scripts/linux-split-down.sh` reverses it.
+- Apps are launched inside the namespace via `pkexec ip netns exec freevpn0 runuser -u
+  $USER -- <path>` — the `runuser` step drops back to the invoking (non-root) user, so the
+  app itself never runs elevated, only the brief namespace-entry step does.
+- **Kill-switch by construction:** if the tunnel drops, the namespace's policy route points
+  at a tun device that no longer exists, so launched apps simply lose connectivity — there's
+  no separate mechanism to fail.
+- Disconnecting the VPN does **not** kill apps already launched into the namespace (killing
+  someone's browser because they disconnected would be surprising); they just lose their
+  route until you reconnect.
+
+### Still to do (Linux)
+- No "currently running apps" list yet (`apps.ts`'s `listRunningApps()` is Windows-only,
+  via PowerShell) — app selection is browse-for-executable only.
+- DNS is hardcoded to public resolvers (1.1.1.1 / 9.9.9.9) rather than whatever the VPN
+  server pushes, since the plain CLI needs an `--up` script to apply pushed DNS and we don't
+  run one yet.

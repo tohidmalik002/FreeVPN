@@ -50,6 +50,7 @@ export interface AppEntry {
 declare global {
   interface Window {
     api: {
+      platform: string;
       getEnv(): Promise<EnvInfo>;
       listServers(): Promise<VpnServer[]>;
       connect(server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void>;
@@ -62,6 +63,7 @@ declare global {
       getSelectedApps(): Promise<AppEntry[]>;
       setSelectedApps(apps: AppEntry[]): Promise<void>;
       browseForApp(): Promise<AppEntry | null>;
+      launchInTunnel(exePath: string): Promise<void>;
       onStatus(cb: (s: VpnStatus) => void): void;
       onLog(cb: (line: string) => void): void;
     };

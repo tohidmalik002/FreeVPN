@@ -13,6 +13,7 @@ import {
 } from './apps';
 import { SplitProxy } from './splitProxy';
 import { ProxifyreManager, locateProxifyre } from './proxifyre';
+import { LinuxSplitTunnel } from './linuxSplit';
 import { EnvInfo, VpnPhase, VpnServer, VpnStatus } from '../shared/types';
 
 const SPLIT_PROXY_PORT = 1080;
@@ -27,15 +28,41 @@ let lastStatus: VpnStatus = { phase: 'disconnected' };
 const vpn = new OpenVpnManager();
 
 // --- per-app split tunnelling (only ever active when the user opts in) ---
+// Windows: ProxiFyre captures an already-running app's traffic into a SOCKS5
+// proxy (splitProxy.ts). Linux has no equivalent packet-filter driver, so
+// linuxSplit.ts instead launches the chosen app inside a routing network
+// namespace — see that file for why. Both paths are opt-in only; with the
+// toggle off, connect is byte-for-byte the plain whole-device VPN.
 const splitProxy = new SplitProxy((line) => win?.webContents.send('vpn:log', line));
 const proxifyre = new ProxifyreManager();
+const linuxSplit = new LinuxSplitTunnel(path.join(APP_ROOT, 'scripts'), (line) =>
+  win?.webContents.send('vpn:log', line),
+);
 let splitRequested = false; // did the last connect ask for chosen-apps mode?
-let splitExes: string[] = []; // the chosen executables at connect time
+let splitExes: string[] = []; // the chosen executables at connect time (Windows)
 
 async function startSplitRouting(): Promise<void> {
-  // Guard: only run when the user chose split mode AND picked apps AND the
-  // engine is installed. Any failure here must NOT affect the VPN connection.
+  // Guard: only run when the user chose split mode AND picked apps. Any
+  // failure here must NOT affect the VPN connection.
   if (!splitRequested || splitExes.length === 0) return;
+
+  if (process.platform === 'linux') {
+    const tunDevice = vpn.getTunDevice();
+    if (!tunDevice) {
+      win?.webContents.send('vpn:log', '[split] could not detect the tunnel device — skipping.');
+      return;
+    }
+    try {
+      await linuxSplit.start(tunDevice);
+    } catch (e) {
+      win?.webContents.send(
+        'vpn:log',
+        `[split] could not start the routing namespace: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+    return;
+  }
+
   const pf = locateProxifyre(APP_ROOT);
   if (!pf.found || !pf.path) {
     win?.webContents.send(
@@ -63,6 +90,11 @@ async function startSplitRouting(): Promise<void> {
 }
 
 async function stopSplitRouting(): Promise<void> {
+  if (process.platform === 'linux') {
+    const tunDevice = vpn.getTunDevice();
+    if (tunDevice) await linuxSplit.stop(tunDevice).catch(() => undefined);
+    return;
+  }
   proxifyre.stop();
   await splitProxy.stop().catch(() => undefined);
 }
@@ -237,12 +269,21 @@ function registerIpc(): void {
   ipcMain.handle('apps:getSelected', () => loadSelectedApps());
   ipcMain.handle('apps:setSelected', (_e, apps: AppEntry[]) => saveSelectedApps(apps));
 
+  ipcMain.handle('split:launch', (_e, exePath: string) => {
+    if (process.platform !== 'linux') return;
+    linuxSplit.launchApp(exePath);
+  });
+
   ipcMain.handle('apps:browse', async (): Promise<AppEntry | null> => {
-    const res = await dialog.showOpenDialog({
-      title: 'Choose an app (.exe) to route through the VPN',
-      properties: ['openFile'],
-      filters: [{ name: 'Applications', extensions: ['exe'] }],
-    });
+    const res = await dialog.showOpenDialog(
+      process.platform === 'linux'
+        ? { title: 'Choose an app to launch through the VPN', properties: ['openFile'] }
+        : {
+            title: 'Choose an app (.exe) to route through the VPN',
+            properties: ['openFile'],
+            filters: [{ name: 'Applications', extensions: ['exe'] }],
+          },
+    );
     if (res.canceled || res.filePaths.length === 0) return null;
     const p = res.filePaths[0];
     const exe = path.basename(p).toLowerCase();
