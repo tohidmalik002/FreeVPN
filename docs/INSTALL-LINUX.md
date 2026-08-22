@@ -3,18 +3,13 @@
 ## Install
 
 ```bash
-sudo dpkg -i freevpn_0.2.0_amd64.deb
+sudo apt install ./freevpn_0.2.0_amd64.deb
 ```
 
-If it complains about missing dependencies, run:
-
-```bash
-sudo apt --fix-broken install
-```
-
-This pulls in `openvpn` and `policykit-1` if you don't already have them —
-both are declared as package dependencies, so a plain `dpkg -i` normally
-succeeds outright on Ubuntu/Mint.
+Using `apt install` (not `dpkg -i`) matters here — it resolves and installs
+the package's dependencies (`openvpn`, `policykit-1`, `iproute2`, `iptables`)
+automatically if you don't already have them, in one step with no follow-up
+`--fix-broken install` needed.
 
 Launch **FreeVPN** from your applications menu, or from a terminal:
 
@@ -29,12 +24,14 @@ the `openvpn` process itself via `pkexec` (your desktop's normal
 authentication dialog) — creating a tun device and changing routes needs
 root, but the rest of the app doesn't. Disconnecting doesn't need another
 prompt; it asks the elevated `openvpn` process to shut down over its own
-local control channel.
+local control channel. The installed polkit policy caches that
+authorization for a few minutes, so retrying a failed server (e.g. via
+"Fastest") or reconnecting shortly after doesn't re-prompt every time.
 
 ## Uninstall
 
 ```bash
-sudo dpkg -r freevpn
+sudo apt remove freevpn
 ```
 
 ## Troubleshooting
