@@ -19,6 +19,7 @@
     "dev": "npm run build && electron .",
     "icon": "node scripts/gen-icon.js",
     "dist:win": "npm run build && npm run icon && electron-builder --win",
+    "dist:linux": "npm run build && npm run icon && electron-builder --linux deb",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
@@ -47,6 +48,31 @@
         "to": "scripts"
       }
     ],
+    "asarUnpack": [
+      "**/node_modules/koffi/**"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": "x64"
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Network",
+      "executableName": "freevpn",
+      "afterInstall": "build/linux/after-install.sh",
+      "afterRemove": "build/linux/after-remove.sh"
+    },
+    "deb": {
+      "depends": [
+        "openvpn",
+        "policykit-1",
+        "iproute2",
+        "iptables"
+      ],
+      "maintainer": "tohidmalik002 <noreply@users.noreply.github.com>"
+    },
     "win": {
       "target": [
         {

@@ -9,6 +9,7 @@ interface AppEntry {
 
 // The typed API surface exposed to the renderer as `window.api`.
 const api = {
+  platform: process.platform,
   getEnv: (): Promise<EnvInfo> => ipcRenderer.invoke('env:info'),
   listServers: (): Promise<VpnServer[]> => ipcRenderer.invoke('vpn:list'),
   connect: (server: VpnServer, opts?: { splitTunnel?: boolean }): Promise<void> =>
@@ -26,6 +27,8 @@ const api = {
   setSelectedApps: (apps: AppEntry[]): Promise<void> =>
     ipcRenderer.invoke('apps:setSelected', apps),
   browseForApp: (): Promise<AppEntry | null> => ipcRenderer.invoke('apps:browse'),
+  launchInTunnel: (exePath: string): Promise<void> =>
+    ipcRenderer.invoke('split:launch', exePath),
 
   onStatus: (cb: (s: VpnStatus) => void): void => {
     ipcRenderer.on('vpn:status', (_e, s: VpnStatus) => cb(s));

@@ -151,6 +151,7 @@ function renderStatus(s: VpnStatus): void {
   disconnectBtn.disabled = !(s.phase === 'connected' || s.phase === 'connecting');
   updateFastestBtn();
   renderRows(); // reflect per-row button state
+  updateLaunchButton();
 }
 
 // ---- server table ----
@@ -364,11 +365,14 @@ const appList = $('appList');
 const appCount = $('appCount');
 
 let knownApps: AppEntry[] = []; // running ∪ selected
+let lastSelected: AppEntry[] = [];
 const runningExes = new Set<string>();
 const workingSel = new Map<string, AppEntry>(); // exe -> entry
+const launchAppsBtn = $<HTMLButtonElement>('launchAppsBtn');
 
 async function updateAppsSummary(): Promise<void> {
   const selected = await api.getSelectedApps();
+  lastSelected = selected;
   if (selected.length === 0) {
     appsSummary.textContent = 'No apps chosen yet';
   } else {
@@ -378,7 +382,28 @@ async function updateAppsSummary(): Promise<void> {
       names.slice(0, 3).join(', ') +
       (names.length > 3 ? `, +${names.length - 3} more` : '');
   }
+  updateLaunchButton();
 }
+
+// Linux has no way to transparently capture an already-running app's
+// traffic (see linuxSplit.ts), so chosen apps are launched through the
+// tunnel instead — this button only makes sense there, once split mode is
+// actually connected and something is selected.
+function updateLaunchButton(): void {
+  const show =
+    api.platform === 'linux' &&
+    currentStatus.phase === 'connected' &&
+    splitToggle.checked &&
+    lastSelected.length > 0;
+  launchAppsBtn.classList.toggle('hidden', !show);
+}
+
+launchAppsBtn.onclick = () => {
+  for (const a of lastSelected) api.launchInTunnel(a.path || a.exe);
+  appendLog(
+    `\n[split] launching ${lastSelected.length} app(s) in the routed namespace…`,
+  );
+};
 
 async function openAppModal(): Promise<void> {
   appModal.classList.remove('hidden');
